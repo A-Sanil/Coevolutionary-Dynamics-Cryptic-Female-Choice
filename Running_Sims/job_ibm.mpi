@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH --output=ibm
+#SBATCH --error=ibmerror
+#SBATCH --partition=128x24
+#SBATCH --nodes=1
+#SBATCH --job-name=test
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=email@gmail
+#SBATCH --mem=100GB
+#SBATCH --ntasks-per-node=23
+
+LD_LIBRARY_PATH="" ~/julia-1.6.3/bin/julia RunModel.jl 

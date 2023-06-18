@@ -1,4 +1,4 @@
-Description of code and data files affiliated with **Kustra and Alonzo "The coevolutionary dynamics of cryptic female choice"** . All code files (.jl or .R) are uploaded on Zenodo in **"Code.zip"** and all data files are uploaded on dryad in **"Data.zip."**
+Description of code and data files affiliated with **Kustra and Alonzo "The coevolutionary dynamics of cryptic female choice"** . All code files (.jl or .R) are uploaded on Zenodo in **"Code.zip"** (or in github) and all data files are uploaded on dryad in **"Data.zip."** Dryad link: https://datadryad.org/stash/dataset/doi:10.7291/D1310W
 
 To properly run code first unzip both **"Code.zip"** and **"Data.zip."** Then make sure the Code and Data files are in the following directories described below. This is most easily accomplished by moving all code files in the **[Analysis]{.underline}** directory of the unzipped **"Code.zip"** to the **[Analysis]{.underline}** directory of the unzipped **"Data.zip."** Then move **"App.R"** in the **[SI_Web_App]{.underline}** directory of the unzipped **"Code.zip"** to the **[SI_Web_App]{.underline}** directory of the unzipped **"Data.zip."** 
 

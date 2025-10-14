@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "julia",
+      "request": "launch",
+      "name": "Run 3 sims (single)",
+      "program": "${workspaceFolder}/Running_Sims/run_3_sims_single.jl",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NO_AUTO_ADDPROCS": "1"
+      }
+    }
+  ]
+}

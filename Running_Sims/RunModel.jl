@@ -5,7 +5,12 @@
 #load up package for distributing work on many cpu's
 using Distributed
 #add the number of procesess i.e. cores being used
-addprocs(23)
+# addprocs can be heavy on a laptop. It will only run if the environment
+# variable NO_AUTO_ADDPROCS is not set. To skip adding workers for quick
+# local runs set NO_AUTO_ADDPROCS=1 in your shell before invoking julia.
+if !haskey(ENV, "NO_AUTO_ADDPROCS")
+  addprocs(23)
+end
 
 #load up packages across all cores
 #the @everywhere tag executes the code across all cores
@@ -31,25 +36,25 @@ end
 @everywhere function start_geno(TD,n,l)
   #####initialization of simulations
   #make maternal genome females
-  mgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  mgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   mgf[mgf.< 0] .= 0
 
   #make paternal genome females
-  pgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  pgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   pgf[pgf.< 0] .= 0
 
   #make maternal genome males
-  mgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  mgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   mgm[mgm.< 0] .= 0
 
   #make paternal genome males
-  pgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  pgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   pgm[pgm.< 0] .= 0
@@ -61,25 +66,25 @@ end
 @everywhere function start_genoD(TD,TD2,n,l)
   #####initialization of simulations
   #make maternal genome females
-  mgf=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  mgf=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   mgf[mgf.< 0] .= 0
 
   #make paternal genome females
-  pgf=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  pgf=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   pgf[pgf.< 0] .= 0
 
   #make maternal genome males
-  mgm=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  mgm=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   mgm[mgm.< 0] .= 0
 
   #make paternal genome males
-  pgm=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  pgm=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=4)
 
   #convert negative genotypic values to 0
   pgm[pgm.< 0] .= 0
@@ -119,9 +124,10 @@ end
 #ind = index/ID of dad or mom
 @everywhere function make_gamete(pg,mg,ind)
   #initialization of new gamete
-  gamete=zeros(1,size(pg)[2],3)
+  ntraits = size(pg,3)
+  gamete=zeros(1,size(pg)[2],ntraits)
   @views for j in 1:size(pg)[2] #iterate through loci
-    for k in 1:3 #iterate through traits
+    for k in 1:ntraits #iterate through traits
       if sample(tf) #sample true or false
         gamete[1,j,k]=pg[ind,j,k] #if true take from paternal
       else
@@ -139,7 +145,8 @@ end
 #mgma= maternal genome of males in the population
 #pgma = paternal genome of males in the population
 #a = strength of selection (lower is stronger selection)
-#rsc = risk/intensity of sperm competition, probability a female mates with a male.
+#cd 'C:\Users\Aadit\OneDrive\Desktop\Berkeley Lab wocd 'C:\Users\Aadit\OneDrive\Desktop\Berkeley Lab work\Coevolutionary-Dynamics-Cryptic-Female-Choice'
+julia "Running_Sims/run_3_sims_single.jl" = risk/intensity of sperm competition, probability a female mates with a male.
 #Ranges 0 to 3. e.g. 2.5 means mates with 2 males and 50% probability a third male.
 #tradeoff= indicates whether a tradeoff between sperm number and sperm male trait exists
 #generations = how many generations
@@ -154,6 +161,21 @@ end
   #mgf, pgf, mgm, pgm=start_geno(TraitD,5000,2)
   #Small pop;20 loci
   mgf, pgf, mgm, pgm=start_geno(TraitD,500,20)
+  #initialize RSC trait (trait column 4) across genomes so it can evolve; use rsc parameter as starting mean
+  ntraits = size(pgm,3)
+  if ntraits >= 4
+    # small starting variance for RSC around provided rsc
+    rsc_init_sigma = max(1e-3, var/10)
+    pgf[:,:,4] .= rand(Normal(rsc,rsc_init_sigma), size(pgf[:,:,4]))
+    mgf[:,:,4] .= rand(Normal(rsc,rsc_init_sigma), size(mgf[:,:,4]))
+    pgm[:,:,4] .= rand(Normal(rsc,rsc_init_sigma), size(pgm[:,:,4]))
+    mgm[:,:,4] .= rand(Normal(rsc,rsc_init_sigma), size(mgm[:,:,4]))
+    #prevent negative RSC genotypic values
+    pgf[pgf.<0] .= 0
+    mgf[mgf.<0] .= 0
+    pgm[pgm.<0] .= 0
+    mgm[mgm.<0] .= 0
+  end
   #Directional selection/different starting averages uncomment the next two lines below
   #TraitD2=Normal(mu*1.5,var) #uncomment this line for directional selection sensitivity and comment out the other start_geno line
   #mgf, pgf, mgm, pgm=start_genoD(TraitD,TraitD2,5000,20) #uncomment this line for directional selection
@@ -163,23 +185,29 @@ end
   dfall=zeros(generations,21)
   #Calculating phenotypes for all individuals by adding up paternal and maternal genomes
   #first make male phenotype array
-  @views mphens=reduce(hcat,[sum(pgm[:,:,i],dims=2).+sum(mgm[:,:,i],dims=2) for i in 1:(size(pgm)[3])])
-  mphens[mphens.<1] .= 1
+  ntraits = size(pgm,3)
+  @views mphens=reduce(hcat,[sum(pgm[:,:,i],dims=2).+sum(mgm[:,:,i],dims=2) for i in 1:ntraits])
+  #only clamp the first three trait-columns (female trait, male trait, sperm number) to minimum 1; leave trait 4 (RSC) free to vary
+  for c in 1:min(3,size(mphens,2))
+    mphens[mphens[:,c].<1,c] .= 1
+  end
   #now make female phenotype array
-  @views fphens=reduce(hcat,[sum(pgf[:,:,i],dims=2).+sum(mgf[:,:,i],dims=2) for i in 1:(size(pgm)[3])])
-  fphens[fphens.<1] .= 1
+  @views fphens=reduce(hcat,[sum(pgf[:,:,i],dims=2).+sum(mgf[:,:,i],dims=2) for i in 1:ntraits])
+  for c in 1:min(3,size(fphens,2))
+    fphens[fphens[:,c].<1,c] .= 1
+  end
   ####Mating
   #allocate empty vector to keep track of offspring
   offspring=zeros(N)
 
   #maternal genome females next gen
-  mgf2=zeros(N,20,3)
+  mgf2=zeros(N,20,ntraits)
   #paternal genome females next gen
-  pgf2=zeros(N,20,3)
+  pgf2=zeros(N,20,ntraits)
   #maternal genome males next gen
-  mgm2=zeros(N,20,3)
+  mgm2=zeros(N,20,ntraits)
   #paternal genome males next gen
-  pgm2=zeros(N,20,3)
+  pgm2=zeros(N,20,ntraits)
 
   #Now for loop to simulate until specified generation.
   @inbounds @views for gen in 1:generations
@@ -197,11 +225,15 @@ end
     #otherwise recalculate phenoypes and reset offsrping to zero
     #.= reasigns variable without allocating more memory
     else
-      mphens.=reduce(hcat,[sum(pgm[:,:,i]+mgm[:,:,i],dims=2) for i in 1:(size(pgm)[3])])
-      mphens[mphens.<1] .= 1
+      mphens.=reduce(hcat,[sum(pgm[:,:,i]+mgm[:,:,i],dims=2) for i in 1:ntraits])
+      for c in 1:min(3,size(mphens,2))
+        mphens[mphens[:,c].<1,c] .= 1
+      end
       #female phenotypes
-      fphens.=reduce(hcat,[sum(pgf[:,:,i]+mgf[:,:,i],dims=2) for i in 1:(size(pgm)[3])])
-      fphens[fphens.<1] .= 1
+      fphens.=reduce(hcat,[sum(pgf[:,:,i]+mgf[:,:,i],dims=2) for i in 1:ntraits])
+      for c in 1:min(3,size(fphens,2))
+        fphens[fphens[:,c].<1,c] .= 1
+      end
       ####Mating
       offspring.=zeros(N)
     end
@@ -210,7 +242,7 @@ end
       #precop=fill(1,length(mphens[:,3]))
       #precop= mate.((mphens[:,3]),1/20,50) .* mate.((mphens[:,2]),1/20,50)
       #precop= mate.((mphens[:,3].+mphens[:,2])./2,1/20,50)
-      precop= mate.((mphens[:,3].*mphens[:,2]),1/1000,2500)
+  precop= mate.((mphens[:,3].*mphens[:,2]),1/1000,2500)
       preprob=precop./sum(precop)
     #if not a tradeoff weight probability of precop success by sperm number (eq. 2 in text)
     else
@@ -226,16 +258,19 @@ end
     FMalestnd2=0.5 .* FMalestnd .^ 2
 
     #standardized male traits for selection analysis
-    Malestnd=(mphens[:,2] .- mean(mphens[:,2]))/std(mphens[:,2])
+  Malestnd=(mphens[:,2] .- mean(mphens[:,2]))/std(mphens[:,2])
 
     #standardized male traits squared for gamma selection coeffients
     Malestnd2=0.5 .* Malestnd .^ 2
 
     #standardized sperm number for selection analysis
-    SMalestnd=(mphens[:,3] .- mean(mphens[:,3]))/std(mphens[:,3])
+  SMalestnd=(mphens[:,3] .- mean(mphens[:,3]))/std(mphens[:,3])
 
     #calculate mean sperm number to save for simulation output
     Meansperm=mean(mphens[:,3])
+
+  #calculate mean RSC to save for simulation output (if present)
+  MeanRSC = ntraits >= 4 ? mean(mphens[:,4]) : NaN
 
     #calculate standard deviation of sperm number to save for model output
     Stdsperm=std(mphens[:,3])
@@ -261,13 +296,24 @@ end
     #next part of code is to loop through all females to mate and reproduce
     for i in 1:size(fphens)[1]
       #mates = number of males a female mates with
-      #if/else statments determine that based on rsc (risk of sperm competiton)
-      if rsc<=1
-        mates=wsample([1,2],[(1-rsc),rsc],1)[1]
-      elseif rsc<=2
-        mates=wsample([2,3],[(2-rsc),rsc-1],1)[1]
+      #Instead of static rsc, derive per-female lambda from evolving RSC trait (trait column 4)
+      #Compute female-specific lambda as average of her RSC and population mean male RSC
+      if ntraits >= 4
+        female_rsc = fphens[i,4]
+        mean_male_rsc = mean(mphens[:,4])
+        lambda_r = max(0.001, (female_rsc + mean_male_rsc)/2) #avoid zero lambda
+        mates_draw = rand(Poisson(lambda_r))
+        #ensure at least 1 mate and at most 4
+        mates = clamp(mates_draw, 1, 4)
       else
-        mates=wsample([3,4],[(3-rsc),rsc-2],1)[1]
+        #fallback to original static rsc-based sampling
+        if rsc<=1
+          mates=wsample([1,2],[(1-rsc),rsc],1)[1]
+        elseif rsc<=2
+          mates=wsample([2,3],[(2-rsc),rsc-1],1)[1]
+        else
+          mates=wsample([3,4],[(3-rsc),rsc-2],1)[1]
+        end
       end
       #sample from male population to get males female mates with
       #weighted by precopulatory sucess calculated above
@@ -369,9 +415,9 @@ end
     #calculate selection coeffients
     model=lm(@formula(RelFit ~ Male+ Maleq+FMale+FMaleq+SMale+SMaleq+MFq+MSq+FSq),dfO)
 
-    #put all model results together
-    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,RSC,generation
-    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(cat(mphens[:,2],fphens[:,2],dims=1),cat(mphens[:,1],fphens[:,1],dims=1)),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,rsc,gen]
+  #put all model results together
+  #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,rsc,generation
+  sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(cat(mphens[:,2],fphens[:,2],dims=1),cat(mphens[:,1],fphens[:,1],dims=1)),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,rsc,gen]
     dfall[gen,:]=sumdf
     #next generation
 

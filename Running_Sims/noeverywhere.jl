@@ -1,37 +1,27 @@
 #Code to run the model for Kustra and Alonzo "The coevolutionary dynamics of cryptic female choice"
 #Modified to include evolving RSC trait (4th trait)
+#Single-threaded version (no parallel processing)
 #please send any questions to mkustra@ucsc.edu
 
-#load up package for distributing work on many cpu's
-using Distributed
-#add the number of procesess i.e. cores being used
-# addprocs can be heavy on a laptop. It will only run if the environment
-# variable NO_AUTO_ADDPROCS is not set. To skip adding workers for quick
-# local runs set NO_AUTO_ADDPROCS=1 in your shell before invoking julia.
-if !haskey(ENV, "NO_AUTO_ADDPROCS")
-  addprocs(23)
-end
-
-#load up packages across all cores
-#the @everywhere tag executes the code across all cores
-@everywhere using Random, Distributions, StatsBase, GLM, DataFrames,CSV,SharedArrays
+#load up packages
+using Random, Distributions, StatsBase, GLM, DataFrames, CSV
 
 #mutation distribution of alleles for 20 Loci runs
-@everywhere const MTD=Normal(0,(4*0.25^2/40)^0.5)
+const MTD=Normal(0,(4*0.25^2/40)^0.5)
 
 #constant for true or false array to sample from
-@everywhere const tf=[true,false]
+const tf=[true,false]
 
 #constant array for whether a mutation occurs
-@everywhere const mutats=[0.005,1-0.005]
+const mutats=[0.005,1-0.005]
 
 #probability of mating sucess eq.1 in main text
-@everywhere function mate(x,a,b)
+function mate(x,a,b)
   1-(1/(1+exp(-a*(x-b))))
 end
 
 #generate population function with 4 traits
-@everywhere function start_geno(TD,n,l)
+function start_geno(TD,n,l)
   #####initialization of simulations
   #make maternal genome females - 4 traits
   mgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
@@ -61,7 +51,7 @@ end
 end
 
 #generate populations with different starting trait averages
-@everywhere function start_genoD(TD,TD2,n,l)
+function start_genoD(TD,TD2,n,l)
   #####initialization of simulations
   #make maternal genome females - 4 traits
   mgf=cat(rand(TD2,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
@@ -92,18 +82,18 @@ end
 
 #Probability of fertilization sucess function (eq.9 in text)
 # '.' makes function vectorized
-@everywhere function prob_success(malesT,malesS,a,d)
+function prob_success(malesT,malesS,a,d)
   prob=exp.((.-(malesT .- d).^2)./(2 .*a)) .* (malesS)
   return(prob./sum(prob))
 end
 
 #Probability of fertilization sucess for fair raffle
-@everywhere function prob_successFR(malesS)
+function prob_successFR(malesS)
   return(malesS)./sum(malesS)
 end
 
 #mutation function takes in a single allele
-@everywhere function mutate(gene)
+function mutate(gene)
   @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
     mut=(rand(MTD,1))[1] #if mutation happens draw from mutation distribution
     gene=gene.+mut #add mutational effect
@@ -121,7 +111,7 @@ end
 #sample a single allele per loci randomly from paternal and maternal copies
 #pg = paternal genome, mg = maternal genome
 #ind = index/ID of dad or mom
-@everywhere function make_gamete(pg,mg,ind)
+function make_gamete(pg,mg,ind)
   #initialization of new gamete
   ntraits = size(pg,3)
   gamete=zeros(1,size(pg)[2],ntraits)
@@ -138,7 +128,7 @@ end
 end
 
 #simulation function with evolving RSC trait
-@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
+function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
   #need to create a deepcopies of all genomes to prevent overwriting.
   TraitD=Normal(mu,var)
   
@@ -431,33 +421,32 @@ end
   return(dfall)
 end
 
-#function or run simulation so I can put it in a for loop below
-@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
-  resultsP=SharedArray{Float64}(reps*gens,22)
-  @sync @distributed for i in 1:reps
-    @async resultsP[(1+(i-1)*gens):(gens*i),1:21]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
-    @async resultsP[(1+(i-1)*gens):(gens*i),22]=fill(i,gens)
+#function to run simulation - single threaded version
+function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
+  resultsP=zeros(Float64, reps*gens, 22)
+  for i in 1:reps
+    println("Running replicate $i of $reps...")
+    resultsP[(1+(i-1)*gens):(gens*i),1:21]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
+    resultsP[(1+(i-1)*gens):(gens*i),22]=fill(i,gens)
   end
   return(resultsP)
 end
 
-#@everywhere block
+# Test parameters (smaller values for testing)
+gens=100  # Reduced from 30000 to 100 for testing
+mu=1.25
+var=(4*5^2/40)^0.5
 
-@everywhere gens=30000
-@everywhere mu=1.25
-@everywhere var=(4*5^2/40)^0.5
+# Single test run with one configuration
+println("Running test simulation...")
+j = true  # Using tradeoff = true
+k = 1     # Using a = 1
+l = 0.25  # Using rsc = 0.25
+results = runsim(5, 500, mu, var, k, l, j, gens)  # Running 5 replicates
+data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
+CSV.write("test_simulation_results.csv", data)
+println("Test simulation completed and saved to test_simulation_results.csv")
 
-# Main loop - rsc parameter is now ignored internally, but kept for backwards compatibility
-for j in [true,false]
-  for k in [1,12.5,50]
-    for l in [0.25,0.5,0.75,1]
-    results=runsim(50,500,mu,var,k,l,j,gens)
-    data=DataFrame(results,[:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
-    CSV.write(string("Results_HighVar_20_1000_RSC/HV_20_1000_",j,"_",k,"_",l,".csv"),data)
-    end
-  end
-end
-
-# Test runs
+# Test runs (uncomment to use)
 #results=runsim(50,500,mu,var,1,0.25,true,100)
 #sim(500,mu,var,1,0.25,true,100,-1)

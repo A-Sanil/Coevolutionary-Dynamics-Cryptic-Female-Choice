@@ -19,15 +19,15 @@ rsc = 0.25
 tradeoff = true
 gens = 50
 
-all_results = Float64[]
+
 results_mat = Array{Float64,2}(undef, reps*gens, 22)
-row = 1
 for rep in 1:reps
-  println("Running rep $rep / $reps ...")
-  df = sim(N, mu, var, a, rsc, tradeoff, gens)
-  # sim returns a gens x 21 matrix; add Rep column to make 22 columns
-  results_mat[(1+(rep-1)*gens):(rep*gens), 1:21] .= df
-  results_mat[(1+(rep-1)*gens):(rep*gens), 22] .= rep
+    println("Running rep $rep / $reps ...")
+    df = sim(N, mu, var, a, rsc, tradeoff, gens)
+    # df is gens x 21, so assign to first 21 columns
+    results_mat[(1+(rep-1)*gens):(rep*gens), 1:21] .= df
+    # fill Rep column
+    results_mat[(1+(rep-1)*gens):(rep*gens), 22] .= rep
 end
 
 colnames = [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:rsc,:Generation,:Rep]

@@ -60,6 +60,22 @@ Add your generated figures (PNG/PDF) to `Running_Sims/plots/` and reference them
 ![Mean RSC across generations](Running_Sims/plots/mean_rsc_over_time.png)
 ```
 
+Example images (placeholders)
+-----------------------------
+Below are three example plots added as placeholders. Replace them with your real output images (PNG/SVG) in `Running_Sims/plots/`.
+
+Mean RSC over generations (example):
+
+![Mean RSC across generations](Running_Sims/plots/mean_rsc_over_time.svg)
+
+Mates per female histogram (gen 1000) example:
+
+![Mates per female (gen1000)](Running_Sims/plots/mates_hist_gen1000.svg)
+
+Trait distributions (example):
+
+![Trait distributions](Running_Sims/plots/trait_distributions.svg)
+
 Suggested figure captions
 - Figure 1: Mean RSC (population average) across generations for three replicate runs.
 - Figure 2: Distribution of mates-per-female in generation 1000 (histogram) showing Poisson-driven variance.

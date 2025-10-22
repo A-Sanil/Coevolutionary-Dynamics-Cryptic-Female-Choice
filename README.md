@@ -2,7 +2,7 @@ This repository contains the code and small helper files for the simulation stud
 
 Author / contributor notes
 --------------------------
-- Working under Dr. Mark Kustra (Kustra Lab). This branch contains development edits made to the original simulation framework to add an evolving RSC trait and make running small experiments easier on a local machine.
+- Working under Dr. Mark Kustra (Martin Lab). This branch contains development edits made to the original simulation framework to add an evolving RSC trait and make running small experiments easier on a local machine.
 
 What I changed (high level)
 ---------------------------

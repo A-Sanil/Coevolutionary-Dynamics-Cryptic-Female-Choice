@@ -442,7 +442,7 @@ println("Running test simulation...")
 j = true  # Using tradeoff = true
 k = 1     # Using a = 1
 l = 0.25  # Using rsc = 0.25
-results = runsim(5, 500, mu, var, k, l, j, gens)  # Running 5 replicates
+results = runsim(10, 1000, mu, var, k, l, j, gens)  # Running 5 replicates
 data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
 CSV.write("test_simulation_results.csv", data)
 println("Test simulation completed and saved to test_simulation_results.csv")

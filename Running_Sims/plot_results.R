@@ -3,8 +3,17 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
+# Check if the file exists
+if (!file.exists("test_simulation_results.csv")) {
+  stop("Error: test_simulation_results.csv not found in the current directory")
+}
+
 # Read the data
-data <- read.csv("test_simulation_results.csv")
+simulation_data <- read.csv("test_simulation_results.csv")
+
+# Print the structure of the data to verify it loaded correctly
+print("Data structure:")
+str(simulation_data)
 
 # Create plots directory if it doesn't exist
 dir.create("plots", showWarnings = FALSE)

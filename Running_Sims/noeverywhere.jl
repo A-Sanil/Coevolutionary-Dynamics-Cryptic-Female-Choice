@@ -4,7 +4,7 @@
 #please send any questions to mkustra@ucsc.edu
 
 #load up packages
-using Random, Distributions, StatsBase, GLM, DataFrames, CSV
+using Random, Distributions, StatsBase, GLM, DataFrames, CSV, Dates
 
 #mutation distribution of alleles for 20 Loci runs
 const MTD=Normal(0,(4*0.25^2/40)^0.5)
@@ -444,8 +444,10 @@ k = 1     # Using a = 1
 l = 0.25  # Using rsc = 0.25
 results = runsim(10, 1000, mu, var, k, l, j, gens)  # Running 5 replicates
 data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
-CSV.write("test_simulation_results.csv", data)
-println("Test simulation completed and saved to test_simulation_results.csv")
+timestamp = Dates.format(now(), "yyyy-mm-dd_HHMMSS")
+outfile = "test_simulation_results_$(timestamp).csv"
+CSV.write(outfile, data)
+println("Test simulation completed and saved to: ", outfile)
 
 # Test runs (uncomment to use)
 #results=runsim(50,500,mu,var,1,0.25,true,100)

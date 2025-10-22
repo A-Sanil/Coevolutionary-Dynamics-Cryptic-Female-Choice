@@ -19,7 +19,7 @@ str(simulation_data)
 dir.create("plots", showWarnings = FALSE)
 
 # 1. Plot Mean RSC over generations
-p1 <- ggplot(data, aes(x=Generation, y=MeanRSC, color=factor(Rep))) +
+p1 <- ggplot(simulation_data, aes(x=Generation, y=MeanRSC, color=factor(Rep))) +
   geom_line() +
   theme_minimal() +
   labs(title="Evolution of RSC Trait",
@@ -30,7 +30,7 @@ p1 <- ggplot(data, aes(x=Generation, y=MeanRSC, color=factor(Rep))) +
 ggsave("plots/rsc_evolution.png", p1, width=10, height=6)
 
 # 2. Plot Male and Female trait means
-p2 <- ggplot(data, aes(x=Generation)) +
+p2 <- ggplot(simulation_data, aes(x=Generation)) +
   geom_line(aes(y=MeanMale, color="Male")) +
   geom_line(aes(y=MeanFemale, color="Female")) +
   facet_wrap(~Rep) +
@@ -43,7 +43,7 @@ p2 <- ggplot(data, aes(x=Generation)) +
 ggsave("plots/trait_evolution.png", p2, width=12, height=8)
 
 # 3. Plot correlation between male and female traits
-p3 <- ggplot(data, aes(x=Generation, y=cor, color=factor(Rep))) +
+p3 <- ggplot(simulation_data, aes(x=Generation, y=cor, color=factor(Rep))) +
   geom_line() +
   theme_minimal() +
   labs(title="Male-Female Trait Correlation",
@@ -54,7 +54,7 @@ p3 <- ggplot(data, aes(x=Generation, y=cor, color=factor(Rep))) +
 ggsave("plots/trait_correlation.png", p3, width=10, height=6)
 
 # 4. Create summary statistics
-summary_stats <- data %>%
+summary_stats <- simulation_data %>%
   group_by(Rep) %>%
   summarize(
     mean_rsc = mean(MeanRSC),

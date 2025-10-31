@@ -9,14 +9,14 @@ using Dates
 include(joinpath(@__DIR__, "RunModel.jl"))
 
 # Quick parameters (small for speed)
-reps = 1
+reps = 5
 N = 200
 mu = 1.25
 var = (4*5^2/40)^0.5
 a = 1.0
 rsc = 0.25
 tradeoff = true
-gens = 3
+gens = 10
 
 @info "Running quick serial sim: reps=$reps N=$N gens=$gens"
 results = runsim_serial(reps, N, mu, var, a, rsc, tradeoff, gens)

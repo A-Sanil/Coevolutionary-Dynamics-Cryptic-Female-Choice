@@ -352,19 +352,18 @@ end
         # Use normalized RSC relative to population mean
         rsc_factor = (female_rsc_phenotype / max(mean_pop_rsc, 0.001))
         
-        # Calculate lambda for mating rate (clamp to reasonable range)
-        lambda_mates = base_mean_mates * clamp(rsc_factor, 0.5, 2.0)
+        # Calculate lambda for mating rate (NO CLAMPING - allow full range)
+        lambda_mates = base_mean_mates * rsc_factor
         
         # Use Negative Binomial (common in evolutionary ecology) or Poisson
         # Negative Binomial allows for overdispersion
         # Parameters: r (dispersion) and p (probability), where mean = r*(1-p)/p
         # Alternatively use Poisson (simpler)
-        # For compatibility, using Poisson with clamped lambda
-        lambda_clamped = clamp(lambda_mates, 0.8, 3.0)
-        mates_draw = rand(Poisson(lambda_clamped))
+        # For compatibility, using Poisson (NO CLAMPING - allow natural variation)
+        mates_draw = rand(Poisson(lambda_mates))
         
-        # Ensure at least 1 mate and reasonable maximum (typical max 4-5 in models)
-        mates = clamp(mates_draw, 1, 5)
+        # Ensure at least 1 mate (but no upper limit clamping)
+        mates = max(1, mates_draw)  # Only clamp to minimum 1, no maximum
       else
         # Fallback to old static rsc-based sampling (shouldn't reach here)
         if rsc<=1

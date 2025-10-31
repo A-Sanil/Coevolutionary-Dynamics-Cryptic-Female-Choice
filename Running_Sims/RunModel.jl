@@ -180,8 +180,8 @@ end
   # RSC genotypes use separate distribution and can be negative
   mgf, pgf, mgm, pgm=start_geno(TraitD, TraitD_RSC, N, 20)
   
-  #Preallocating results
-  dfall=zeros(generations,21)
+  #Preallocating results (22 columns: original 21 + MeanMates)
+  dfall=zeros(generations,22)
   
   #Calculating phenotypes for all individuals by adding up paternal and maternal genomes
   #first make male phenotype array
@@ -328,6 +328,9 @@ end
 
     #keep count of male offspring indexing
     mcount=1
+    
+    #initialize array to track number of mates per female for this generation
+    mates_per_female = zeros(size(fphens)[1])
 
     #next part of code is to loop through all females to mate and reproduce
     for i in 1:size(fphens)[1]
@@ -359,11 +362,12 @@ end
         # Negative Binomial allows for overdispersion
         # Parameters: r (dispersion) and p (probability), where mean = r*(1-p)/p
         # Alternatively use Poisson (simpler)
-        # For compatibility, using Poisson (NO CLAMPING - allow natural variation)
-        mates_draw = rand(Poisson(lambda_mates))
+        # For compatibility, using Poisson
+        mates = rand(Poisson(lambda_mates))
         
-        # Ensure at least 1 mate (but no upper limit clamping)
-        mates = max(1, mates_draw)  # Only clamp to minimum 1, no maximum
+        # Ensure mates is at least 1 (biological requirement: females must mate at least once)
+        # but no upper limit clamping to allow evolution
+        mates = max(1, mates)
       else
         # Fallback to old static rsc-based sampling (shouldn't reach here)
         if rsc<=1
@@ -374,6 +378,9 @@ end
           mates=wsample([3,4],[(3-rsc),rsc-2],1)[1]
         end
       end
+      
+      # Record number of mates for this female
+      mates_per_female[i] = mates
       
       #sample from male population to get males female mates with
       #weighted by precopulatory sucess calculated above
@@ -474,10 +481,13 @@ end
     dfO=DataFrame(RelFit=reloff,Male=Malestnd,Maleq=Malestnd2,FMale=FMalestnd,FMaleq=FMalestnd2,SMale=SMalestnd,SMaleq=SMalestnd2,MFq=gmf,MSq=gms,FSq=gfs)
     #calculate selection coeffients
     model=lm(@formula(RelFit ~ Male+ Maleq+FMale+FMaleq+SMale+SMaleq+MFq+MSq+FSq),dfO)
+    
+    #calculate mean mates per female
+    MeanMates = mean(mates_per_female)
 
     #put all model results together
-    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen
-    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen]
+    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen,MeanMates
+    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates]
     dfall[gen,:]=sumdf
     #next generation
 
@@ -506,21 +516,21 @@ end
 
 #function or run simulation so I can put it in a for loop below
 @everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
-  resultsP=SharedArray{Float64}(reps*gens,22)
+  resultsP=SharedArray{Float64}(reps*gens,23)
   @sync @distributed for i in 1:reps
-    @async resultsP[(1+(i-1)*gens):(gens*i),1:21]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
-    @async resultsP[(1+(i-1)*gens):(gens*i),22]=fill(i,gens)
+    @async resultsP[(1+(i-1)*gens):(gens*i),1:22]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
+    @async resultsP[(1+(i-1)*gens):(gens*i),23]=fill(i,gens)
   end
   return(resultsP)
 end
 
 # Single-threaded runner (copied/adapted from noeverywhere.jl)
 function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
-  resultsP=zeros(Float64, reps*gens, 22)
+  resultsP=zeros(Float64, reps*gens, 23)
   for i in 1:reps
     println("Running replicate $i of $reps...")
-    resultsP[(1+(i-1)*gens):(gens*i),1:21]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
-    resultsP[(1+(i-1)*gens):(gens*i),22]=fill(i,gens)
+    resultsP[(1+(i-1)*gens):(gens*i),1:22]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
+    resultsP[(1+(i-1)*gens):(gens*i),23]=fill(i,gens)
   end
   return(resultsP)
 end

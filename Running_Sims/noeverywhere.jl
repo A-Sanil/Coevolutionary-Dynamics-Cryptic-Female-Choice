@@ -97,11 +97,21 @@ function mutate(gene)
   @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
     mut=(rand(MTD,1))[1] #if mutation happens draw from mutation distribution
     gene=gene.+mut #add mutational effect
-    if gene<0 #if gene is now less than 0 make it 0
-      return(0)
-    else #otherwise return gene
-      return(gene)
-    end
+    # Note: RSC trait (trait 4) is allowed to have negative values, so no clamping here
+    return(gene)
+  else #if no mutation occurs just return same gene value
+    return(gene)
+  end
+end
+
+#Enhanced mutation function for RSC trait with log-normal scaling
+function mutate_rsc(gene)
+  @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
+    # Use smaller mutation variance for log-scaled RSC values
+    rsc_mut_sigma = 0.1  # Smaller variance for more stable evolution
+    mut=(rand(Normal(0, rsc_mut_sigma),1))[1] #if mutation happens draw from mutation distribution
+    gene=gene.+mut #add mutational effect to log-scaled value
+    return(gene)
   else #if no mutation occurs just return same gene value
     return(gene)
   end
@@ -138,17 +148,13 @@ function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
   #Initialize RSC trait (trait column 4) with mean=1, small variance
   ntraits = size(pgm,3)
   if ntraits >= 4
-    rsc_init_sigma = 0.1  # Small starting variance around mean of 1
-    pgf[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(pgf[:,:,4]))
-    mgf[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(mgf[:,:,4]))
-    pgm[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(pgm[:,:,4]))
-    mgm[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(mgm[:,:,4]))
-    
-    #Enforce minimum RSC of 0.5
-    pgf[pgf[:,:,4].<0.5, 4] .= 0.5
-    mgf[mgf[:,:,4].<0.5, 4] .= 0.5
-    pgm[pgm[:,:,4].<0.5, 4] .= 0.5
-    mgm[mgm[:,:,4].<0.5, 4] .= 0.5
+    # Initialize RSC values using log-normal distribution centered around 1
+    # This allows natural evolution while keeping values around 1
+    rsc_sigma = 0.2  # Controls the spread of the log-normal distribution
+    pgf[:,:,4] .= exp.(rand(Normal(0, rsc_sigma), size(pgf[:,:,4])))
+    mgf[:,:,4] .= exp.(rand(Normal(0, rsc_sigma), size(mgf[:,:,4])))
+    pgm[:,:,4] .= exp.(rand(Normal(0, rsc_sigma), size(pgm[:,:,4])))
+    mgm[:,:,4] .= exp.(rand(Normal(0, rsc_sigma), size(mgm[:,:,4])))
   end
   
   #Preallocating results
@@ -162,19 +168,14 @@ function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
   for c in 1:min(3,size(mphens,2))
     mphens[mphens[:,c].<1,c] .= 1
   end
-  #Enforce RSC minimum separately
-  if ntraits >= 4
-    mphens[mphens[:,4].<0.5, 4] .= 0.5
-  end
+  #RSC trait (column 4) is not clamped - allowed to evolve freely
   
   #now make female phenotype array
   @views fphens=reduce(hcat,[sum(pgf[:,:,i],dims=2).+sum(mgf[:,:,i],dims=2) for i in 1:ntraits])
   for c in 1:min(3,size(fphens,2))
     fphens[fphens[:,c].<1,c] .= 1
   end
-  if ntraits >= 4
-    fphens[fphens[:,4].<0.5, 4] .= 0.5
-  end
+  #RSC trait (column 4) is not clamped - allowed to evolve freely
   
   ####Mating
   #allocate empty vector to keep track of offspring
@@ -211,18 +212,14 @@ function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
       for c in 1:min(3,size(mphens,2))
         mphens[mphens[:,c].<1,c] .= 1
       end
-      if ntraits >= 4
-        mphens[mphens[:,4].<0.5, 4] .= 0.5
-      end
+      #RSC trait (column 4) is not clamped - allowed to evolve freely
       
       #female phenotypes
       fphens.=reduce(hcat,[sum(pgf[:,:,i]+mgf[:,:,i],dims=2) for i in 1:ntraits])
       for c in 1:min(3,size(fphens,2))
         fphens[fphens[:,c].<1,c] .= 1
       end
-      if ntraits >= 4
-        fphens[fphens[:,4].<0.5, 4] .= 0.5
-      end
+      #RSC trait (column 4) is not clamped - allowed to evolve freely
       
       ####Mating
       offspring.=zeros(N)
@@ -413,10 +410,25 @@ function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
     dfall[gen,:]=sumdf
     #next generation
 
-    pgm .=mutate.(pgm2)
-    mgm .=mutate.(mgm2)
-    pgf.=mutate.(pgf2)
-    mgf.=mutate.(mgf2)
+    # Apply mutations with specialized function for RSC trait
+    ntraits = size(pgm,3)
+    for i in 1:size(pgm,1)
+      for j in 1:size(pgm,2)
+        for k in 1:ntraits
+          if k == 4  # RSC trait
+            pgm[i,j,k] = mutate_rsc(pgm2[i,j,k])
+            mgm[i,j,k] = mutate_rsc(mgm2[i,j,k])
+            pgf[i,j,k] = mutate_rsc(pgf2[i,j,k])
+            mgf[i,j,k] = mutate_rsc(mgf2[i,j,k])
+          else  # Other traits
+            pgm[i,j,k] = mutate(pgm2[i,j,k])
+            mgm[i,j,k] = mutate(mgm2[i,j,k])
+            pgf[i,j,k] = mutate(pgf2[i,j,k])
+            mgf[i,j,k] = mutate(mgf2[i,j,k])
+          end
+        end
+      end
+    end
   end
   return(dfall)
 end

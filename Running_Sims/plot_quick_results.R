@@ -38,15 +38,53 @@ p2 <- ggplot(df, aes(x = Generation, y = MeanCount, color = Rep)) +
   theme_minimal() +
   labs(title = 'Mean sperm count across generations', y = 'Mean sperm count')
 
-# 3) MeanRSC across generations
+# 3) MeanRSC across generations - with precise scaling and detailed labels
+# MeanRSC represents the mean Risk of Sperm Competition phenotype in the population
+# It's calculated as exp(genotype_sum / (2*n_loci)) to ensure non-negative values
+# Higher RSC values indicate higher average mating rates (females mate with more males)
+# This affects the Poisson lambda parameter for number of mates per female
 p3 <- ggplot(df, aes(x = Generation, y = MeanRSC, color = Rep)) +
-  geom_line() +
+  geom_line(linewidth = 1.2, alpha = 0.8) +
   theme_minimal() +
-  labs(title = 'Mean RSC across generations', y = 'Mean RSC')
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.position = "right"
+  ) +
+  scale_y_continuous(
+    name = "Mean RSC Phenotype Value",
+    labels = scales::number_format(accuracy = 0.01),  # Show 2 decimal places
+    breaks = scales::pretty_breaks(n = 10)  # More breaks for better precision
+  ) +
+  labs(
+    title = 'Evolution of Mean RSC (Risk of Sperm Competition)',
+    subtitle = 'RSC determines mating rates: higher values = more mates per female\nPhenotype = exp(genotype_sum / (2×n_loci))',
+    x = 'Generation',
+    y = 'Mean RSC Phenotype Value',
+    color = 'Replicate'
+  )
+
+# Add summary statistics text
+rsc_range <- paste0("Range: ", round(min(df$MeanRSC), 3), " - ", round(max(df$MeanRSC), 3))
+rsc_mean <- paste0("Overall Mean: ", round(mean(df$MeanRSC), 3))
 
 # Save plots
-ggsave('quick_mean_traits.png', p1, width = 8, height = 6)
-ggsave('quick_mean_count.png', p2, width = 8, height = 4)
-ggsave('quick_mean_rsc.png', p3, width = 8, height = 4)
+ggsave('quick_mean_traits.png', p1, width = 8, height = 6, dpi = 300)
+ggsave('quick_mean_count.png', p2, width = 8, height = 4, dpi = 300)
+ggsave('quick_mean_rsc.png', p3, width = 10, height = 6, dpi = 300)  # Wider for better visibility
+
+# Print summary statistics
+cat('\n=== RSC Summary Statistics ===\n')
+cat('Overall Mean RSC:', round(mean(df$MeanRSC), 4), '\n')
+cat('Overall Min RSC:', round(min(df$MeanRSC), 4), '\n')
+cat('Overall Max RSC:', round(max(df$MeanRSC), 4), '\n')
+cat('\nFinal Generation RSC by Replicate:\n')
+final_gen <- max(df$Generation)
+final_rsc <- df %>% 
+  filter(Generation == final_gen) %>% 
+  select(Rep, MeanRSC) %>% 
+  arrange(Rep)
+print(final_rsc)
 
 cat('Plots saved: quick_mean_traits.png, quick_mean_count.png, quick_mean_rsc.png\n')

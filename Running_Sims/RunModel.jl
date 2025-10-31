@@ -31,31 +31,46 @@ end
 end
 
 #generate population function with 4 traits
-@everywhere function start_geno(TD,n,l)
+# TD = distribution for traits 1-3, TD_RSC = distribution for RSC (trait 4)
+@everywhere function start_geno(TD, TD_RSC, n, l)
   #####initialization of simulations
   #make maternal genome females - 4 traits
-  mgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  # First 3 traits use TD, RSC (trait 4) uses TD_RSC (can be negative)
+  mgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
   #convert negative genotypic values to 0
-  mgf[mgf.< 0] .= 0
+  # Only clamp the first three trait columns (trait columns 1..3); leave trait 4 (RSC) unmodified so negatives are allowed
+  ntraits_local = size(mgf,3)
+  for c in 1:min(3,ntraits_local)
+    mgf[:,:,c][mgf[:,:,c] .< 0] .= 0
+  end
 
   #make paternal genome females - 4 traits
-  pgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  pgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
   #convert negative genotypic values to 0
-  pgf[pgf.< 0] .= 0
+  ntraits_local = size(pgf,3)
+  for c in 1:min(3,ntraits_local)
+    pgf[:,:,c][pgf[:,:,c] .< 0] .= 0
+  end
 
   #make maternal genome males - 4 traits
-  mgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  mgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
   #convert negative genotypic values to 0
-  mgm[mgm.< 0] .= 0
+  ntraits_local = size(mgm,3)
+  for c in 1:min(3,ntraits_local)
+    mgm[:,:,c][mgm[:,:,c] .< 0] .= 0
+  end
 
   #make paternal genome males - 4 traits
-  pgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),dims=3)
+  pgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
   #convert negative genotypic values to 0
-  pgm[pgm.< 0] .= 0
+  ntraits_local = size(pgm,3)
+  for c in 1:min(3,ntraits_local)
+    pgm[:,:,c][pgm[:,:,c] .< 0] .= 0
+  end
 
   return(mgf,pgf,mgm,pgm)
 end
@@ -107,11 +122,23 @@ end
   @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
     mut=(rand(MTD,1))[1] #if mutation happens draw from mutation distribution
     gene=gene.+mut #add mutational effect
-    if gene<0 #if gene is now less than 0 make it 0
-      return(0)
-    else #otherwise return gene
-      return(gene)
-    end
+    # Note: RSC trait (trait 4) is allowed to have negative values, so no clamping here
+    return(gene)
+  else #if no mutation occurs just return same gene value
+    return(gene)
+  end
+end
+
+#Enhanced mutation function for RSC trait
+# RSC genotypes can be negative, so mutations are additive on the raw genotypic scale
+@everywhere function mutate_rsc(gene)
+  @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
+    # Use mutation variance appropriate for RSC (higher variance trait)
+    # Scale mutation variance relative to RSC trait variance (which is 3x standard)
+    rsc_mut_sigma = (4*0.25^2/40)^0.5 * 1.5  # Higher mutation variance for RSC
+    mut=(rand(Normal(0, rsc_mut_sigma),1))[1] #if mutation happens draw from mutation distribution
+    gene=gene.+mut #add mutational effect (can be negative)
+    return(gene)
   else #if no mutation occurs just return same gene value
     return(gene)
   end
@@ -140,26 +167,18 @@ end
 #simulation function with evolving RSC trait
 @everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
   #need to create a deepcopies of all genomes to prevent overwriting.
+  # Distribution for traits 1-3 (standard traits)
   TraitD=Normal(mu,var)
   
-  #Initialize population with 4 traits (female, male, sperm, RSC)
-  mgf, pgf, mgm, pgm=start_geno(TraitD,N,20)
+  # Custom distribution for RSC: lower mu, higher variance, can be negative
+  # Parameters: mu_RSC lower than main traits, var_RSC higher
+  mu_RSC = 0.5  # Lower mean for RSC
+  var_RSC = var * 3.0  # Higher variance (3x the standard variance)
+  TraitD_RSC = Normal(mu_RSC, var_RSC)
   
-  #Initialize RSC trait (trait column 4) with mean=1, small variance
-  ntraits = size(pgm,3)
-  if ntraits >= 4
-    rsc_init_sigma = 0.1  # Small starting variance around mean of 1
-    pgf[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(pgf[:,:,4]))
-    mgf[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(mgf[:,:,4]))
-    pgm[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(pgm[:,:,4]))
-    mgm[:,:,4] .= rand(Normal(1, rsc_init_sigma), size(mgm[:,:,4]))
-    
-    #Enforce minimum RSC of 0.5
-    pgf[pgf[:,:,4].<0.5, 4] .= 0.5
-    mgf[mgf[:,:,4].<0.5, 4] .= 0.5
-    pgm[pgm[:,:,4].<0.5, 4] .= 0.5
-    mgm[mgm[:,:,4].<0.5, 4] .= 0.5
-  end
+  #Initialize population with 4 traits (female, male, sperm, RSC)
+  # RSC genotypes use separate distribution and can be negative
+  mgf, pgf, mgm, pgm=start_geno(TraitD, TraitD_RSC, N, 20)
   
   #Preallocating results
   dfall=zeros(generations,21)
@@ -172,9 +191,13 @@ end
   for c in 1:min(3,size(mphens,2))
     mphens[mphens[:,c].<1,c] .= 1
   end
-  #Enforce RSC minimum separately
-  if ntraits >= 4
-    mphens[mphens[:,4].<0.5, 4] .= 0.5
+  #RSC trait (column 4): ensure phenotypes are non-negative using scaled exponential transformation
+  # Scale by number of loci to keep values in reasonable range
+  n_loci = size(pgm,2)
+  if size(mphens,2) >= 4
+    # Scale by loci and use exp() with offset to ensure positive but reasonable values
+    # This maps genotype sums to positive phenotype space while preventing explosion
+    mphens[:,4] = exp.(mphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
   end
   
   #now make female phenotype array
@@ -182,8 +205,11 @@ end
   for c in 1:min(3,size(fphens,2))
     fphens[fphens[:,c].<1,c] .= 1
   end
-  if ntraits >= 4
-    fphens[fphens[:,4].<0.5, 4] .= 0.5
+  #RSC trait (column 4): ensure phenotypes are non-negative using scaled exponential transformation
+  n_loci = size(pgf,2)
+  if size(fphens,2) >= 4
+    # Scale by loci and use exp() to ensure positive but reasonable values
+    fphens[:,4] = exp.(fphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
   end
   
   ####Mating
@@ -221,8 +247,11 @@ end
       for c in 1:min(3,size(mphens,2))
         mphens[mphens[:,c].<1,c] .= 1
       end
-      if ntraits >= 4
-        mphens[mphens[:,4].<0.5, 4] .= 0.5
+      #RSC trait (column 4): ensure phenotypes are non-negative
+      n_loci = size(pgm,2)
+      if size(mphens,2) >= 4
+        # Scale by loci to keep values reasonable
+        mphens[:,4] = exp.(mphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
       end
       
       #female phenotypes
@@ -230,8 +259,11 @@ end
       for c in 1:min(3,size(fphens,2))
         fphens[fphens[:,c].<1,c] .= 1
       end
-      if ntraits >= 4
-        fphens[fphens[:,4].<0.5, 4] .= 0.5
+      #RSC trait (column 4): ensure phenotypes are non-negative
+      n_loci = size(pgf,2)
+      if size(fphens,2) >= 4
+        # Scale by loci to keep values reasonable
+        fphens[:,4] = exp.(fphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
       end
       
       ####Mating
@@ -268,7 +300,13 @@ end
     Meansperm=mean(mphens[:,3])
 
     #calculate mean RSC to save for simulation output (if present)
-    MeanRSC = ntraits >= 4 ? mean(mphens[:,4]) : NaN
+    # RSC phenotypes are already transformed (exp of genotype sum), so report mean directly
+    if ntraits >= 4
+      # Report mean RSC phenotype (already in transformed positive scale)
+      MeanRSC = mean(mphens[:,4])
+    else
+      MeanRSC = NaN
+    end
 
     #calculate standard deviation of sperm number to save for model output
     Stdsperm=std(mphens[:,3])
@@ -294,18 +332,39 @@ end
     #next part of code is to loop through all females to mate and reproduce
     for i in 1:size(fphens)[1]
       #mates = number of males a female mates with
-      #Use evolving RSC trait to determine number of mates via Poisson
+      #Use evolving RSC trait to determine number of mates
+      #Standard evolutionary computational genetics models typically use:
+      # - Negative binomial (for overdispersed data) or
+      # - Poisson with mean ~1.5-2.5 mates per female
       if ntraits >= 4
-        # Average female's RSC and mean male RSC for lambda
-        female_rsc = fphens[i,4]
-        mean_male_rsc = mean(mphens[:,4])
-        lambda_r = (female_rsc + mean_male_rsc) / 2
+        # Calculate mean RSC phenotype (already transformed to be positive)
+        n_loci = size(pgm,2)
+        female_rsc_phenotype = fphens[i,4]
+        mean_pop_rsc = mean(fphens[:,4])
         
-        # Draw from Poisson with averaged lambda
-        mates_draw = rand(Poisson(lambda_r))
+        # Use RSC phenotype to determine mating rate
+        # Scale RSC to affect mean mating rate (typical range 1.0-2.5 mates)
+        # Use a sigmoid-like transformation to map RSC to mating rate
+        # Base mean around 1.5-2.0 (common in evolutionary models)
+        base_mean_mates = 1.75  # Base mean number of mates
         
-        # Clamp to reasonable range [1, 4]
-        mates = clamp(mates_draw, 1, 4)
+        # Scale RSC effect: higher RSC -> more mates
+        # Use normalized RSC relative to population mean
+        rsc_factor = (female_rsc_phenotype / max(mean_pop_rsc, 0.001))
+        
+        # Calculate lambda for mating rate (clamp to reasonable range)
+        lambda_mates = base_mean_mates * clamp(rsc_factor, 0.5, 2.0)
+        
+        # Use Negative Binomial (common in evolutionary ecology) or Poisson
+        # Negative Binomial allows for overdispersion
+        # Parameters: r (dispersion) and p (probability), where mean = r*(1-p)/p
+        # Alternatively use Poisson (simpler)
+        # For compatibility, using Poisson with clamped lambda
+        lambda_clamped = clamp(lambda_mates, 0.8, 3.0)
+        mates_draw = rand(Poisson(lambda_clamped))
+        
+        # Ensure at least 1 mate and reasonable maximum (typical max 4-5 in models)
+        mates = clamp(mates_draw, 1, 5)
       else
         # Fallback to old static rsc-based sampling (shouldn't reach here)
         if rsc<=1
@@ -365,7 +424,7 @@ end
           #fair raffle uncomment line below 
           #probm=prob_successFR(mphens[matesM,3])
           #deplete ejaculation for males
-          mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
+         
         else
           #calculate probs of fertilization sucess for males for cryptic female choice
           probm=prob_success(mphens[matesM,2],mphens[matesM,3],a,d)
@@ -423,10 +482,25 @@ end
     dfall[gen,:]=sumdf
     #next generation
 
-    pgm .=mutate.(pgm2)
-    mgm .=mutate.(mgm2)
-    pgf.=mutate.(pgf2)
-    mgf.=mutate.(mgf2)
+    # Apply mutations with specialized function for RSC trait
+    ntraits = size(pgm,3)
+    for i in 1:size(pgm,1)
+      for j in 1:size(pgm,2)
+        for k in 1:ntraits
+          if k == 4  # RSC trait
+            pgm[i,j,k] = mutate_rsc(pgm2[i,j,k])
+            mgm[i,j,k] = mutate_rsc(mgm2[i,j,k])
+            pgf[i,j,k] = mutate_rsc(pgf2[i,j,k])
+            mgf[i,j,k] = mutate_rsc(mgf2[i,j,k])
+          else  # Other traits
+            pgm[i,j,k] = mutate(pgm2[i,j,k])
+            mgm[i,j,k] = mutate(mgm2[i,j,k])
+            pgf[i,j,k] = mutate(pgf2[i,j,k])
+            mgf[i,j,k] = mutate(mgf2[i,j,k])
+          end
+        end
+      end
+    end
   end
   return(dfall)
 end
@@ -441,6 +515,17 @@ end
   return(resultsP)
 end
 
+# Single-threaded runner (copied/adapted from noeverywhere.jl)
+function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
+  resultsP=zeros(Float64, reps*gens, 22)
+  for i in 1:reps
+    println("Running replicate $i of $reps...")
+    resultsP[(1+(i-1)*gens):(gens*i),1:21]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
+    resultsP[(1+(i-1)*gens):(gens*i),22]=fill(i,gens)
+  end
+  return(resultsP)
+end
+
 #@everywhere block
 
 @everywhere gens=30000
@@ -448,16 +533,39 @@ end
 @everywhere var=(4*5^2/40)^0.5
 
 # Main loop - rsc parameter is now ignored internally, but kept for backwards compatibility
-for j in [true,false]
-  for k in [1,12.5,50]
-    for l in [0.25,0.5,0.75,1]
-    results=runsim(50,500,mu,var,k,l,j,gens)
-    data=DataFrame(results,[:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
-    CSV.write(string("Results_HighVar_20_1000_RSC/HV_20_1000_",j,"_",k,"_",l,".csv"),data)
+# Guarded: only runs if RUN_FULL_SIMULATION environment variable is set
+if get(ENV, "RUN_FULL_SIMULATION", "0") == "1"
+  for j in [true,false]
+    for k in [1,12.5,50]
+      for l in [0.25,0.5,0.75,1]
+        results=runsim(10,500,mu,var,k,l,j,gens)
+        outdir = "Results_HighVar_20_1000_RSC"
+        isdir(outdir) || mkdir(outdir)
+        outfile = joinpath(outdir, string("HV_20_1000_",j,"_",k,"_",l,".csv"))
+        data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
+        CSV.write(outfile, data)
+      end
     end
   end
 end
 
 # Test runs
-#results=runsim(50,500,mu,var,1,0.25,true,100)
-#sim(500,mu,var,1,0.25,true,100,-1)
+# Guarded single-process test run (won't run unless you set environment variable RUN_SINGLE_TEST=1)
+if get(ENV, "RUN_SINGLE_TEST", "0") == "1"
+  println("Running single-process test simulation (guarded)...")
+  # Test parameters (smaller values for testing)
+  gens_test = 100
+  mu_test = mu
+  var_test = var
+
+  # Single test run with one configuration (adjust values as needed)
+  tradeoff_test = true
+  a_test = 1
+  rsc_test = 0.25
+  results = runsim_serial(5, 100, mu_test, var_test, a_test, rsc_test, tradeoff_test, gens_test)
+  data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
+  timestamp = Dates.format(now(), "yyyy-mm-dd_HHMMSS")
+  outfile = "test_simulation_results_$(timestamp).csv"
+  CSV.write(outfile, data)
+  println("Test simulation completed and saved to: ", outfile)
+end

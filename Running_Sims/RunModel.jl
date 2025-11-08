@@ -336,38 +336,18 @@ end
     for i in 1:size(fphens)[1]
       #mates = number of males a female mates with
       #Use evolving RSC trait to determine number of mates
-      #Standard evolutionary computational genetics models typically use:
-      # - Negative binomial (for overdispersed data) or
-      # - Poisson with mean ~1.5-2.5 mates per female
+      #RSC phenotype directly serves as lambda (mean) for Poisson distribution
       if ntraits >= 4
-        # Calculate mean RSC phenotype (already transformed to be positive)
-        n_loci = size(pgm,2)
+        # Get female RSC phenotype (already transformed to be positive)
         female_rsc_phenotype = fphens[i,4]
-        mean_pop_rsc = mean(fphens[:,4])
         
-        # Use RSC phenotype to determine mating rate
-        # Scale RSC to affect mean mating rate (typical range 1.0-2.5 mates)
-        # Use a sigmoid-like transformation to map RSC to mating rate
-        # Base mean around 1.5-2.0 (common in evolutionary models)
-        base_mean_mates = 1.75  # Base mean number of mates
+        # Use RSC directly as lambda for Poisson (no scaling, no clamping)
+        # RSC phenotype is the mean mating rate
+        lambda_mates = female_rsc_phenotype
         
-        # Scale RSC effect: higher RSC -> more mates
-        # Use normalized RSC relative to population mean
-        rsc_factor = (female_rsc_phenotype / max(mean_pop_rsc, 0.001))
-        
-        # Calculate lambda for mating rate (NO CLAMPING - allow full range)
-        lambda_mates = base_mean_mates * rsc_factor
-        
-        # Use Negative Binomial (common in evolutionary ecology) or Poisson
-        # Negative Binomial allows for overdispersion
-        # Parameters: r (dispersion) and p (probability), where mean = r*(1-p)/p
-        # Alternatively use Poisson (simpler)
-        # For compatibility, using Poisson
+        # Sample number of mates from Poisson distribution
+        # No clamping - allow RSC to evolve freely, including values < 1 or very large
         mates = rand(Poisson(lambda_mates))
-        
-        # Ensure mates is at least 1 (biological requirement: females must mate at least once)
-        # but no upper limit clamping to allow evolution
-        mates = max(1, mates)
       else
         # Fallback to old static rsc-based sampling (shouldn't reach here)
         if rsc<=1
@@ -381,6 +361,11 @@ end
       
       # Record number of mates for this female
       mates_per_female[i] = mates
+      
+      # Skip reproduction if mates == 0 (RSC too low, no mating occurs)
+      if mates == 0
+        continue
+      end
       
       #sample from male population to get males female mates with
       #weighted by precopulatory sucess calculated above

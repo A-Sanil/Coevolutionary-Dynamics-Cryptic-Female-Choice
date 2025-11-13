@@ -38,39 +38,22 @@ end
   # First 3 traits use TD, RSC (trait 4) uses TD_RSC (can be negative)
   mgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
-  #convert negative genotypic values to 0
-  # Only clamp the first three trait columns (trait columns 1..3); leave trait 4 (RSC) unmodified so negatives are allowed
-  ntraits_local = size(mgf,3)
-  for c in 1:min(3,ntraits_local)
-    mgf[:,:,c][mgf[:,:,c] .< 0] .= 0
-  end
+  #NO CLAMPING - allow negative genotypes to evolve naturally
 
   #make paternal genome females - 4 traits
   pgf=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
-  #convert negative genotypic values to 0
-  ntraits_local = size(pgf,3)
-  for c in 1:min(3,ntraits_local)
-    pgf[:,:,c][pgf[:,:,c] .< 0] .= 0
-  end
+  #NO CLAMPING - allow negative genotypes to evolve naturally
 
   #make maternal genome males - 4 traits
   mgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
-  #convert negative genotypic values to 0
-  ntraits_local = size(mgm,3)
-  for c in 1:min(3,ntraits_local)
-    mgm[:,:,c][mgm[:,:,c] .< 0] .= 0
-  end
+  #NO CLAMPING - allow negative genotypes to evolve naturally
 
   #make paternal genome males - 4 traits
   pgm=cat(rand(TD,(n,l)),rand(TD,(n,l)),rand(TD,(n,l)),rand(TD_RSC,(n,l)),dims=3)
 
-  #convert negative genotypic values to 0
-  ntraits_local = size(pgm,3)
-  for c in 1:min(3,ntraits_local)
-    pgm[:,:,c][pgm[:,:,c] .< 0] .= 0
-  end
+  #NO CLAMPING - allow negative genotypes to evolve naturally
 
   return(mgf,pgf,mgm,pgm)
 end
@@ -170,47 +153,28 @@ end
   # Distribution for traits 1-3 (standard traits)
   TraitD=Normal(mu,var)
   
-  # Custom distribution for RSC: lower mu, higher variance, can be negative
-  # Parameters: mu_RSC lower than main traits, var_RSC higher
-  mu_RSC = 0.5  # Lower mean for RSC
-  var_RSC = var * 3.0  # Higher variance (3x the standard variance)
-  TraitD_RSC = Normal(mu_RSC, var_RSC)
+  # RSC initialized using Poisson distribution
+  # Lambda per locus chosen so that sum across 20 loci has reasonable mean (~1-3)
+  # Using lambda = 0.1 per locus gives mean ≈ 2 across 20 loci
+  lambda_RSC_per_locus = 0.1
+  TraitD_RSC = Poisson(lambda_RSC_per_locus)
   
   #Initialize population with 4 traits (female, male, sperm, RSC)
-  # RSC genotypes use separate distribution and can be negative
+  # RSC genotypes initialized from Poisson distribution (sum of Poissons is Poisson)
+  # After mutations (which are continuous), RSC can evolve continuously
   mgf, pgf, mgm, pgm=start_geno(TraitD, TraitD_RSC, N, 20)
   
   #Preallocating results (22 columns: original 21 + MeanMates)
   dfall=zeros(generations,22)
   
   #Calculating phenotypes for all individuals by adding up paternal and maternal genomes
+  #NO CLAMPING - allow natural evolution of all traits
   #first make male phenotype array
   ntraits = size(pgm,3)
   @views mphens=reduce(hcat,[sum(pgm[:,:,i],dims=2).+sum(mgm[:,:,i],dims=2) for i in 1:ntraits])
-  #only clamp the first three trait-columns (female trait, male trait, sperm number) to minimum 1
-  for c in 1:min(3,size(mphens,2))
-    mphens[mphens[:,c].<1,c] .= 1
-  end
-  #RSC trait (column 4): ensure phenotypes are non-negative using scaled exponential transformation
-  # Scale by number of loci to keep values in reasonable range
-  n_loci = size(pgm,2)
-  if size(mphens,2) >= 4
-    # Scale by loci and use exp() with offset to ensure positive but reasonable values
-    # This maps genotype sums to positive phenotype space while preventing explosion
-    mphens[:,4] = exp.(mphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
-  end
   
   #now make female phenotype array
   @views fphens=reduce(hcat,[sum(pgf[:,:,i],dims=2).+sum(mgf[:,:,i],dims=2) for i in 1:ntraits])
-  for c in 1:min(3,size(fphens,2))
-    fphens[fphens[:,c].<1,c] .= 1
-  end
-  #RSC trait (column 4): ensure phenotypes are non-negative using scaled exponential transformation
-  n_loci = size(pgf,2)
-  if size(fphens,2) >= 4
-    # Scale by loci and use exp() to ensure positive but reasonable values
-    fphens[:,4] = exp.(fphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
-  end
   
   ####Mating
   #allocate empty vector to keep track of offspring
@@ -243,28 +207,11 @@ end
     #otherwise recalculate phenoypes and reset offsrping to zero
     #.= reasigns variable without allocating more memory
     else
+      #NO CLAMPING - recalculate phenotypes naturally
       mphens.=reduce(hcat,[sum(pgm[:,:,i]+mgm[:,:,i],dims=2) for i in 1:ntraits])
-      for c in 1:min(3,size(mphens,2))
-        mphens[mphens[:,c].<1,c] .= 1
-      end
-      #RSC trait (column 4): ensure phenotypes are non-negative
-      n_loci = size(pgm,2)
-      if size(mphens,2) >= 4
-        # Scale by loci to keep values reasonable
-        mphens[:,4] = exp.(mphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
-      end
       
       #female phenotypes
       fphens.=reduce(hcat,[sum(pgf[:,:,i]+mgf[:,:,i],dims=2) for i in 1:ntraits])
-      for c in 1:min(3,size(fphens,2))
-        fphens[fphens[:,c].<1,c] .= 1
-      end
-      #RSC trait (column 4): ensure phenotypes are non-negative
-      n_loci = size(pgf,2)
-      if size(fphens,2) >= 4
-        # Scale by loci to keep values reasonable
-        fphens[:,4] = exp.(fphens[:,4] ./ (2.0 * n_loci))  # Scale by total alleles
-      end
       
       ####Mating
       offspring.=zeros(N)
@@ -282,34 +229,37 @@ end
     
     #need to standardize traits for selection analysis before sperm depletion
     #standardized female phenotypes
-    FMalestnd=(fphens[:,1] .- mean(fphens[:,1]))/std(fphens[:,1])
+  sF = max(std(fphens[:,1]), 1e-6)
+  FMalestnd=(fphens[:,1] .- mean(fphens[:,1]))/sF
 
     #standardized female traits squared for gamma selection coeffients
     FMalestnd2=0.5 .* FMalestnd .^ 2
 
     #standardized male traits for selection analysis
-    Malestnd=(mphens[:,2] .- mean(mphens[:,2]))/std(mphens[:,2])
+  sM = max(std(mphens[:,2]), 1e-6)
+  Malestnd=(mphens[:,2] .- mean(mphens[:,2]))/sM
 
     #standardized male traits squared for gamma selection coeffients
     Malestnd2=0.5 .* Malestnd .^ 2
 
     #standardized sperm number for selection analysis
-    SMalestnd=(mphens[:,3] .- mean(mphens[:,3]))/std(mphens[:,3])
+  sS = max(std(mphens[:,3]), 1e-6)
+  SMalestnd=(mphens[:,3] .- mean(mphens[:,3]))/sS
 
     #calculate mean sperm number to save for simulation output
     Meansperm=mean(mphens[:,3])
 
     #calculate mean RSC to save for simulation output (if present)
-    # RSC phenotypes are already transformed (exp of genotype sum), so report mean directly
+    # RSC phenotypes are sum of alleles (additive model) with floor, so report mean directly
     if ntraits >= 4
-      # Report mean RSC phenotype (already in transformed positive scale)
+      # Report mean RSC phenotype (additive model, positive values only)
       MeanRSC = mean(mphens[:,4])
     else
       MeanRSC = NaN
     end
 
     #calculate standard deviation of sperm number to save for model output
-    Stdsperm=std(mphens[:,3])
+  Stdsperm=std(mphens[:,3])
 
     #standardized sperm number for gamma selection coeffients
     SMalestnd2=0.5 .* SMalestnd .^ 2
@@ -338,12 +288,12 @@ end
       #Use evolving RSC trait to determine number of mates
       #RSC phenotype directly serves as lambda (mean) for Poisson distribution
       if ntraits >= 4
-        # Get female RSC phenotype (already transformed to be positive)
+        # Get female RSC phenotype (can be negative - natural evolution)
         female_rsc_phenotype = fphens[i,4]
         
-        # Use RSC directly as lambda for Poisson (no scaling, no clamping)
-        # RSC phenotype is the mean mating rate
-        lambda_mates = female_rsc_phenotype
+        # Use RSC as lambda for Poisson - only clamp at point of use (Poisson requires non-negative)
+        # This allows RSC to evolve freely, but ensures Poisson sampling works
+        lambda_mates = max(0.0, female_rsc_phenotype)
         
         # Sample number of mates from Poisson distribution
         # No clamping - allow RSC to evolve freely, including values < 1 or very large
@@ -486,7 +436,7 @@ end
             mgm[i,j,k] = mutate_rsc(mgm2[i,j,k])
             pgf[i,j,k] = mutate_rsc(pgf2[i,j,k])
             mgf[i,j,k] = mutate_rsc(mgf2[i,j,k])
-          else  # Other traits
+          else  # Other traits (1-3): NO CLAMPING - allow natural evolution
             pgm[i,j,k] = mutate(pgm2[i,j,k])
             mgm[i,j,k] = mutate(mgm2[i,j,k])
             pgf[i,j,k] = mutate(pgf2[i,j,k])

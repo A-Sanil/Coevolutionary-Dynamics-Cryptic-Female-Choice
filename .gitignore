@@ -1,0 +1,58 @@
+# Generated plots and images
+*.png
+*.pdf
+*.jpg
+*.jpeg
+*.gif
+
+# R plot outputs
+Rplots.pdf
+Rplots.png
+
+# Temporary CSV files (keep only final results)
+parallel_sim_results_*.csv
+!Results_HighVar_*/**/*.csv
+
+# Generated plot directories
+*_plots/
+Plots/
+Images/
+
+# Test results
+test_results/
+*.test.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# R cache
+.Rhistory
+.RData
+.Ruserdata
+
+# Julia cache
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+

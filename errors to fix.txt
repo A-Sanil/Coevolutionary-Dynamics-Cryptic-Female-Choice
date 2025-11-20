@@ -1,5 +1,0 @@
-genotype, phenotype erroring some issue wit
-compare with what the old code 
-
-
-make sure to change one thing at a time 

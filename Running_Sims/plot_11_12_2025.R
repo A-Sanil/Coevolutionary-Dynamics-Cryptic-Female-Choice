@@ -6,10 +6,14 @@ library(dplyr)
 library(tidyr)
 library(scales)
 
-# Get the most recent CSV file
-csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", full.names = TRUE)
+# Get the most recent CSV file from 11_19_testing folder
+csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = "11_19_testing", full.names = TRUE)
 if (length(csv_files) == 0) {
-  stop("No CSV files found! Make sure the simulation has run and created a CSV file.")
+  # Fallback: check current directory
+  csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", full.names = TRUE)
+  if (length(csv_files) == 0) {
+    stop("No CSV files found! Make sure the simulation has run and created a CSV file.")
+  }
 }
 
 # Get the most recent file
@@ -20,8 +24,7 @@ cat("Reading data from:", latest_file, "\n")
 df <- read.csv(latest_file)
 
 # Create output directory for plots
-# Using underscores for Windows compatibility (user requested "11/12/2025 plots")
-plot_dir <- "11_12_2025_plots"
+plot_dir <- "11_19_testing"
 if (!dir.exists(plot_dir)) {
   dir.create(plot_dir)
   cat("Created directory:", plot_dir, "\n")

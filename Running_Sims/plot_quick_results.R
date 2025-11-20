@@ -3,9 +3,11 @@
 
 library(tidyverse)
 
-# adjust path if needed - check for both quick_sim_results and parallel_sim_results
-# Prioritize parallel_sim_results if available, otherwise use most recent
-parallel_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = ".", full.names = TRUE)
+# Check 11_19_testing folder first, then current directory
+parallel_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = "11_19_testing", full.names = TRUE)
+if(length(parallel_files) == 0) {
+  parallel_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = ".", full.names = TRUE)
+}
 quick_files <- list.files(pattern = "quick_sim_results_.*\\.csv$", path = ".", full.names = TRUE)
 
 if(length(parallel_files) > 0) {
@@ -112,12 +114,17 @@ p5 <- ggplot(df, aes(x = MeanRSC, y = MeanMates)) +
 rsc_range <- paste0("Range: ", round(min(df$MeanRSC), 3), " - ", round(max(df$MeanRSC), 3))
 rsc_mean <- paste0("Overall Mean: ", round(mean(df$MeanRSC), 3))
 
-# Save plots
-ggsave('quick_mean_traits.png', p1, width = 8, height = 6, dpi = 300)
-ggsave('quick_mean_count.png', p2, width = 8, height = 4, dpi = 300)
-ggsave('quick_mean_rsc.png', p3, width = 10, height = 6, dpi = 300)  # Wider for better visibility
-ggsave('quick_mean_mates.png', p4, width = 10, height = 6, dpi = 300)
-ggsave('quick_rsc_vs_mates.png', p5, width = 10, height = 7, dpi = 300)
+# Create output directory if it doesn't exist
+if (!dir.exists("11_19_testing")) {
+  dir.create("11_19_testing")
+}
+
+# Save plots to 11_19_testing folder
+ggsave('11_19_testing/quick_mean_traits.png', p1, width = 8, height = 6, dpi = 300)
+ggsave('11_19_testing/quick_mean_count.png', p2, width = 8, height = 4, dpi = 300)
+ggsave('11_19_testing/quick_mean_rsc.png', p3, width = 10, height = 6, dpi = 300)  # Wider for better visibility
+ggsave('11_19_testing/quick_mean_mates.png', p4, width = 10, height = 6, dpi = 300)
+ggsave('11_19_testing/quick_rsc_vs_mates.png', p5, width = 10, height = 7, dpi = 300)
 
 # Print summary statistics
 cat('\n=== RSC Summary Statistics ===\n')
@@ -154,4 +161,4 @@ cat('  Intercept:', round(intercept, 4), '(expected ≈ 0.0)\n')
 mean_diff <- mean(df$MeanRSC - df$MeanMates, na.rm=TRUE)
 cat('Mean difference (RSC - MeanMates):', round(mean_diff, 4), '\n')
 
-cat('\nPlots saved: quick_mean_traits.png, quick_mean_count.png, quick_mean_rsc.png, quick_mean_mates.png, quick_rsc_vs_mates.png\n')
+cat('\nPlots saved to 11_19_testing/: quick_mean_traits.png, quick_mean_count.png, quick_mean_rsc.png, quick_mean_mates.png, quick_rsc_vs_mates.png\n')

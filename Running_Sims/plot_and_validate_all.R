@@ -11,14 +11,13 @@ library(dplyr)
 library(tidyr)
 library(scales)
 
-# Get the most recent CSV file from 11_19_testing folder
-csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = "11_19_testing", full.names = TRUE)
+# Get the most recent CSV file (runmodel or parallel) from the current directory
+csv_files <- c(
+  list.files(pattern = "runmodel_results_.*\\.csv$", full.names = TRUE),
+  list.files(pattern = "parallel_sim_results_.*\\.csv$", full.names = TRUE)
+)
 if (length(csv_files) == 0) {
-  # Fallback: check current directory
-  csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", full.names = TRUE)
-  if (length(csv_files) == 0) {
-    stop("No CSV files found! Make sure the simulation has run and created a CSV file.")
-  }
+  stop("No CSV files found! Make sure the simulation has run and created a CSV file.")
 }
 
 # Get the most recent file
@@ -29,9 +28,10 @@ cat("Reading data from:", latest_file, "\n")
 df <- read.csv(latest_file)
 
 # Create output directory for plots
-plot_dir <- "11_19_testing"
+# Folder: R_plots/<YYYY-MM-DD>
+plot_dir <- file.path("R_plots", format(Sys.Date(), "%Y-%m-%d"))
 if (!dir.exists(plot_dir)) {
-  dir.create(plot_dir)
+  dir.create(plot_dir, recursive = TRUE)
   cat("Created directory:", plot_dir, "\n")
 }
 
@@ -433,4 +433,3 @@ cat("9. Summary All Metrics\n")
 cat("10. RSC Distribution\n")
 
 cat("\n=== VALIDATION COMPLETE ===\n")
-

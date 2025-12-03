@@ -24,7 +24,11 @@ gens = 200  # More generations to see evolution - parallel makes this feasible
 results = runsim(reps, N, mu, var, a, rsc, tradeoff, gens)
 
 using DataFrames, CSV
-data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
+# results matrix has 22 data columns + Rep ID (23 total); include MeanMates from sim output
+data = DataFrame(
+    results,
+    [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:Rep],
+)
 
 timestamp = Dates.format(now(), "yyyy-mm-dd_HHMMSS")
 outfile = joinpath(@__DIR__, "parallel_sim_results_$(timestamp).csv")
@@ -45,4 +49,3 @@ for rep in 1:reps
 end
 println(repeat("=", 60))
 println("\nDone. CSV: $outfile")
-

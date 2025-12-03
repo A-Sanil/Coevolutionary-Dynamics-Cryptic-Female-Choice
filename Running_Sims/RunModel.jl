@@ -25,6 +25,21 @@ end
 #constant array for whether a mutation occurs
 @everywhere const mutats=[0.005,1-0.005]
 
+# Safely normalize a vector of weights; fall back to uniform if values are invalid
+@everywhere function safe_normalize(w)
+  if isempty(w)
+    return w
+  end
+  if any(!isfinite, w)
+    return fill(1/length(w), length(w))
+  end
+  total = sum(w)
+  if total <= 0
+    return fill(1/length(w), length(w))
+  end
+  return w ./ total
+end
+
 #probability of mating sucess eq.1 in main text
 @everywhere function mate(x,a,b)
   1-(1/(1+exp(-a*(x-b))))
@@ -220,11 +235,11 @@ end
     #if tradeoff weight probability of precop sucess by both male phenotype and sperm number (eq.1 in text)
     if tradeoff
       precop= mate.((mphens[:,3].*mphens[:,2]),1/1000,2500)
-      preprob=precop./sum(precop)
+      preprob=safe_normalize(precop)
     #if not a tradeoff weight probability of precop success by sperm number (eq. 2 in text)
     else
       precop = mate.(mphens[:,3],1/20,50)
-      preprob=precop./sum(precop)
+      preprob=safe_normalize(precop)
     end
     
     #need to standardize traits for selection analysis before sperm depletion
@@ -308,6 +323,8 @@ end
           mates=wsample([3,4],[(3-rsc),rsc-2],1)[1]
         end
       end
+      # Never try to sample more mates than are available
+      mates = clamp(mates, 0, size(mphens, 1))
       
       # Record number of mates for this female
       mates_per_female[i] = mates
@@ -374,6 +391,7 @@ end
           mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
         end
         #calculate who got fertilization sucess based on probs
+        probm = safe_normalize(probm)
         ferts=wsample(matesM,probm,2)
         #specific female is i
         #specific male is in the vector ferts

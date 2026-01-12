@@ -11,25 +11,51 @@ library(dplyr)
 library(tidyr)
 library(scales)
 
-# Get the most recent CSV file from 11_19_testing folder
-csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = "11_19_testing", full.names = TRUE)
-if (length(csv_files) == 0) {
-  # Fallback: check current directory
-  csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", full.names = TRUE)
-  if (length(csv_files) == 0) {
-    stop("No CSV files found! Make sure the simulation has run and created a CSV file.")
+# Optional args: --csv <path> --outdir <path>
+args <- commandArgs(trailingOnly = TRUE)
+csv_path <- NULL
+plot_dir <- NULL
+if (length(args) > 0) {
+  for (i in seq_along(args)) {
+    if (args[i] == "--csv" && i < length(args)) {
+      csv_path <- args[i + 1]
+    }
+    if (args[i] == "--outdir" && i < length(args)) {
+      plot_dir <- args[i + 1]
+    }
   }
 }
 
-# Get the most recent file
-latest_file <- csv_files[order(file.info(csv_files)$mtime, decreasing = TRUE)[1]]
+# Resolve CSV input
+if (!is.null(csv_path)) {
+  if (!file.exists(csv_path)) {
+    stop("CSV file not found: ", csv_path)
+  }
+  latest_file <- csv_path
+} else {
+  # Get the most recent CSV file from 11_19_testing folder
+  csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", path = "11_19_testing", full.names = TRUE)
+  if (length(csv_files) == 0) {
+    # Fallback: check current directory
+    csv_files <- list.files(pattern = "parallel_sim_results_.*\\.csv$", full.names = TRUE)
+    if (length(csv_files) == 0) {
+      stop("No CSV files found! Make sure the simulation has run and created a CSV file.")
+    }
+  }
+
+  # Get the most recent file
+  latest_file <- csv_files[order(file.info(csv_files)$mtime, decreasing = TRUE)[1]]
+}
+
 cat("Reading data from:", latest_file, "\n")
 
 # Read the data
 df <- read.csv(latest_file)
 
 # Create output directory for plots
-plot_dir <- "11_19_testing"
+if (is.null(plot_dir)) {
+  plot_dir <- "11_19_testing"
+}
 if (!dir.exists(plot_dir)) {
   dir.create(plot_dir)
   cat("Created directory:", plot_dir, "\n")

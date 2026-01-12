@@ -56,3 +56,9 @@ desktop.ini
 *.bak
 *.log
 
+# Allow tracked outputs in Running_Sims/output
+!Running_Sims/output/
+!Running_Sims/output/**/
+!Running_Sims/output/**/*.csv
+!Running_Sims/output/**/*.png
+

@@ -65,8 +65,8 @@ else:
 from scipy import stats
 slope, intercept, r_value, p_value, std_err = stats.linregress(df['MeanRSC'], df['MeanMates'])
 print(f"\nLinear model: MeanMates ~ MeanRSC")
-print(f"  Slope: {slope:.4f} (expected ≈ 1.0)")
-print(f"  Intercept: {intercept:.4f} (expected ≈ 0.0)")
+print(f"  Slope: {slope:.4f} (expected ~ 1.0)")
+print(f"  Intercept: {intercept:.4f} (expected ~ 0.0)")
 print(f"  R-squared: {r_value**2:.4f}")
 
 if abs(slope - 1.0) < 0.1 and abs(intercept) < 0.5:
@@ -129,11 +129,11 @@ if abs(intercept) > 1.0:
     issues.append("Intercept deviates significantly from 0.0")
 
 if issues:
-    print("\n⚠️  ISSUES FOUND:")
+    print("\nWARNING: ISSUES FOUND:")
     for issue in issues:
         print(f"  - {issue}")
 else:
-    print("\n✅ VALIDATION PASSED!")
+    print("\nVALIDATION PASSED!")
     print("  - RSC and MeanMates match properly")
     print("  - No unwanted clamping detected")
     print("  - Evolution appears normal")

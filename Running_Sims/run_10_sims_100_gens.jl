@@ -2,15 +2,15 @@ using Random, Distributions, StatsBase, GLM, DataFrames, CSV, Dates
 
 include("RunModel.jl") # Include the main model code
 
-# Set simulation parameters
-gens = 100     # 100 generations
-reps = 10        # 10 simulations
-N = 200          # Population size
-mu = 1.25         # Keep original mu
-var = (4*5^2/40)^0.5  # Keep original var
-a = 1             # Simple a value
-tradeoff = true   # Use tradeoff mode
-rsc = 0.25        # RSC parameter (now evolving, but kept for compatibility)
+# Set simulation parameters (env overrides for quick experimentation)
+gens = 100                               # 100 generations
+reps = parse(Int, get(ENV, "REPS", "10"))  # default 10, override with REPS
+N = 200                                  # Population size
+mu = 1.25                                # Keep original mu
+var = (4*5^2/40)^0.5                     # Keep original var
+a = 1                                    # Simple a value
+tradeoff = true                          # Use tradeoff mode
+rsc = 0.25                               # RSC parameter (now evolving, but kept for compatibility)
 
 # Run 10 simulations
 println("Starting 10 simulations with 100 generations each...")
@@ -62,4 +62,3 @@ try
 catch e
     println("Note: Could not set up plotting script: ", e)
 end
-

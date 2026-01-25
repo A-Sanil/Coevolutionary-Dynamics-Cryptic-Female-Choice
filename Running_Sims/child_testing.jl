@@ -10,21 +10,31 @@ using Random, Statistics, Distributions, DataFrames, CSV, Dates
 # Compatibility between a male and female trait (higher when traits are similar)
 compatibility(m::Float64, f::Float64) = 1 / (1 + abs(m - f))
 
+# Empirical modifiers from literature
+const MHC_PENALTY = 0.10      # ~10% lower sperm success for related pairs (guppy study) citeturn2search3
+const REL_THRESHOLD = 0.10    # treat |trait difference| < 0.1 as related
+const OVARIAN_BOOST = 2.0     # ovarian fluid roughly doubles motile life span in salmonids citeturn2search4
+const OVARIAN_THRESHOLD = 0.50 # boost starts once compatibility exceeds this level
+const GL_OPT = 0.50           # gestation-length optimum (normalized trait) from sow study where extremes lowered TNB citeturn0search5
+const GL_WIDTH = 0.20         # width of tolerance around optimum
+
 # Expected offspring count given compatibility score in [0,1]
 function offspring_mean(score::Float64, model::Symbol)
+    # All curves are tuned to peak near ~4 offspring so population maxima are comparable
     if model === :parabola
-        peak = 5.0           # max expected children at optimum
-        opt = 0.7            # compatibility giving peak offspring
-        width = 0.6          # controls how quickly it drops away from opt
+        peak = 4.0           # maximum expected offspring at optimum
+        opt = 0.65           # compatibility giving the peak
+        width = 0.70         # wider width so offspring stay viable over broader compatibility
         scale = 1 - ((score - opt) / width)^2
-        return max(0.0, peak * scale)
+        base = peak * max(0.0, scale)
+        return max(1.0, base)  # higher floor prevents collapse when compatibility is low
     elseif model === :asymptote
-        max_children = 6.0   # horizontal asymptote
-        k = 3.5              # steepness
+        max_children = 4.0   # horizontal asymptote
+        k = 4.2              # steepness controls how fast it approaches max
         return max_children * (1 - exp(-k * score))
     elseif model === :mixed
-        # Weighted blend of the two curves; keeps peak moderate
-        return 0.55 * offspring_mean(score, :parabola) + 0.45 * offspring_mean(score, :asymptote)
+        # Blend parabola and asymptote; peaks around 4 as well
+        return 0.5 * offspring_mean(score, :parabola) + 0.5 * offspring_mean(score, :asymptote)
     else
         error("Unknown model: $model")
     end
@@ -74,7 +84,18 @@ function run_replicate(model::Symbol; generations::Int=100, init_pop::Int=200, K
             carrying = clamp(1 - current_pop / K, 0.2, 1.2)
             total_scale += carrying
 
-            λ = max(base_mean * carrying, 0.0)
+            # MHC / relatedness penalty: ~10% lower success when traits are very similar
+            related = abs(mtrait - ftrait) < REL_THRESHOLD
+            mhc_factor = related ? (1 - MHC_PENALTY) : 1.0
+
+            # Ovarian fluid boost scales up to 2x as compatibility rises past threshold
+            ov_scale = clamp((score - OVARIAN_THRESHOLD) / (1 - OVARIAN_THRESHOLD), 0.0, 1.0)
+            ovarian_factor = 1 + (OVARIAN_BOOST - 1) * ov_scale
+
+            # Gestation-length stabilizing selection on female trait (peak near 0.5)
+            gl_factor = exp(-((ftrait - GL_OPT) / GL_WIDTH)^2)
+
+            λ = max(base_mean * carrying * mhc_factor * ovarian_factor * gl_factor, 0.0)
             total_expected += λ
 
             nchild = rand(rng, Poisson(λ))

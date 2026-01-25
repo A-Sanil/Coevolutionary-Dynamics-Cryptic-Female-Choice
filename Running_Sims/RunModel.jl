@@ -25,6 +25,23 @@ end
 #constant array for whether a mutation occurs
 @everywhere const mutats=[0.005,1-0.005]
 
+#utility: safe normalization of probability vectors
+@everywhere function safe_normalize(p)
+  p = Float64.(p)
+  # replace non-finite with 0
+  @inbounds for i in eachindex(p)
+    if !isfinite(p[i])
+      p[i] = 0.0
+    end
+  end
+  s = sum(p)
+  if s <= 0 || !isfinite(s)
+    fill(1.0/length(p), length(p))
+  else
+    p ./ s
+  end
+end
+
 #probability of mating sucess eq.1 in main text
 @everywhere function mate(x,a,b)
   1-(1/(1+exp(-a*(x-b))))
@@ -92,12 +109,12 @@ end
 # '.' makes function vectorized
 @everywhere function prob_success(malesT,malesS,a,d)
   prob=exp.((.-(malesT .- d).^2)./(2 .*a)) .* (malesS)
-  return(prob./sum(prob))
+  return safe_normalize(prob)
 end
 
 #Probability of fertilization sucess for fair raffle
 @everywhere function prob_successFR(malesS)
-  return(malesS)./sum(malesS)
+  return safe_normalize(malesS)
 end
 
 #mutation function takes in a single allele
@@ -220,11 +237,11 @@ end
     #if tradeoff weight probability of precop sucess by both male phenotype and sperm number (eq.1 in text)
     if tradeoff
       precop= mate.((mphens[:,3].*mphens[:,2]),1/1000,2500)
-      preprob=precop./sum(precop)
+      preprob = safe_normalize(precop)
     #if not a tradeoff weight probability of precop success by sperm number (eq. 2 in text)
     else
       precop = mate.(mphens[:,3],1/20,50)
-      preprob=precop./sum(precop)
+      preprob = safe_normalize(precop)
     end
     
     #need to standardize traits for selection analysis before sperm depletion
@@ -317,8 +334,14 @@ end
         continue
       end
       
+      #cap mates to available males to avoid sampling errors
+      mates = min(mates, size(mphens,1))
+
       #sample from male population to get males female mates with
       #weighted by precopulatory sucess calculated above
+      if mates == 0
+        continue
+      end
       matesM=wsample(1:size(mphens)[1],preprob,mates,replace=false)
 
       #if there is only one male no need to model risk of sperm competition
@@ -374,6 +397,7 @@ end
           mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
         end
         #calculate who got fertilization sucess based on probs
+        probm = safe_normalize(probm)
         ferts=wsample(matesM,probm,2)
         #specific female is i
         #specific male is in the vector ferts
@@ -409,9 +433,13 @@ end
         end
       end
     end
-    #calculate opportunity for selection
-    is=(sum((offspring .- mean(offspring)) .^ 2 ) ./ length(offspring)) .* (1 ./ mean(offspring) .^ 2)
-    reloff=offspring./mean(offspring)
+    #calculate opportunity for selection (guard against zero/NaN mean)
+    off_mean = mean(offspring)
+    if off_mean <= 0 || !isfinite(off_mean)
+      off_mean = 1.0
+    end
+    is=(sum((offspring .- off_mean) .^ 2 ) ./ length(offspring)) .* (1 ./ off_mean .^ 2)
+    reloff=offspring ./ off_mean
     #make data frame to calculate selection coeffients
     dfO=DataFrame(RelFit=reloff,Male=Malestnd,Maleq=Malestnd2,FMale=FMalestnd,FMaleq=FMalestnd2,SMale=SMalestnd,SMaleq=SMalestnd2,MFq=gmf,MSq=gms,FSq=gfs)
     #calculate selection coeffients

@@ -11,11 +11,11 @@ using Random, Statistics, Distributions, DataFrames, CSV, Dates
 compatibility(m::Float64, f::Float64) = 1 / (1 + abs(m - f))
 
 # Empirical modifiers from literature
-const MHC_PENALTY = 0.10      # ~10% lower sperm success for related pairs (guppy study) citeturn2search3
+const MHC_PENALTY = 0.10      # ~10% lower sperm success for related pairs (guppy MHC effect)
 const REL_THRESHOLD = 0.10    # treat |trait difference| < 0.1 as related
-const OVARIAN_BOOST = 2.0     # ovarian fluid roughly doubles motile life span in salmonids citeturn2search4
+const OVARIAN_BOOST = 2.0     # ovarian fluid roughly doubles motile lifespan in salmonids
 const OVARIAN_THRESHOLD = 0.50 # boost starts once compatibility exceeds this level
-const GL_OPT = 0.50           # gestation-length optimum (normalized trait) from sow study where extremes lowered TNB citeturn0search5
+const GL_OPT = 0.50           # gestation-length optimum (normalized trait) where extremes lowered litter size
 const GL_WIDTH = 0.20         # width of tolerance around optimum
 
 # Expected offspring count given compatibility score in [0,1]

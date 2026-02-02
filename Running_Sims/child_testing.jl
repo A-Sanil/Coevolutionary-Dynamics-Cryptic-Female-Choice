@@ -2,7 +2,7 @@
 # Three reproductive response curves:
 #   1) parabola: offspring peaks at an intermediate compatibility
 #   2) asymptote: offspring rises then levels off
-#   3) mixed: blend of parabola + asymptote
+#   3) linear: monotonically increasing linear function
 # Output: CSV with population/trait trajectories across generations and replicates.
 
 using Random, Statistics, Distributions, DataFrames, CSV, Dates
@@ -32,9 +32,12 @@ function offspring_mean(score::Float64, model::Symbol)
         max_children = 4.0   # horizontal asymptote
         k = 4.2              # steepness controls how fast it approaches max
         return max_children * (1 - exp(-k * score))
-    elseif model === :mixed
-        # Blend parabola and asymptote; peaks around 4 as well
-        return 0.5 * offspring_mean(score, :parabola) + 0.5 * offspring_mean(score, :asymptote)
+    elseif model === :linear
+        # Monotonically increasing linear function: offspring increases linearly with compatibility
+        # Range: from 1.0 at score=0 to 4.0 at score=1
+        min_offspring = 1.0
+        max_offspring = 4.0
+        return min_offspring + (max_offspring - min_offspring) * score
     else
         error("Unknown model: $model")
     end
@@ -132,7 +135,7 @@ function run_replicate(model::Symbol; generations::Int=100, init_pop::Int=200, K
 end
 
 function run_models(; generations=100, init_pop=200, K=400, mutation_sd=0.05, reps=5, seed=42)
-    models = [:parabola, :asymptote, :mixed]
+    models = [:parabola, :asymptote, :linear]
     all_runs = DataFrame()
     for (m_idx, model) in enumerate(models)
         for r in 1:reps

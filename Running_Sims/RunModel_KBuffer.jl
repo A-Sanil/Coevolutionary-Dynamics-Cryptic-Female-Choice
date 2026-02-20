@@ -158,7 +158,7 @@ end
 end
 
 #simulation function with evolving RSC trait
-@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N^2,maintain_sex_ratio=true)
+@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N^2,maintain_sex_ratio=true,show_gui=false)
   #need to create a deepcopies of all genomes to prevent overwriting.
   # Distribution for traits 1-3 (standard traits)
   TraitD=Normal(mu,var)
@@ -206,9 +206,19 @@ end
 
   #Now for loop to simulate until specified generation.
   @inbounds @views for gen in 1:generations
-    # Progress HUD: print every 10 generations
-    if gen % 10 == 0 || gen == 1
-      println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
+    # Progress display
+    if show_gui
+      # Console progress bar updates every generation
+      prog = Int(round(gen/generations * 50))
+      bar = "█"^prog * "░"^(50-prog)
+      percent = Int(round(gen/generations * 100))
+      print("\r[$bar] $percent% | Gen: $gen/$generations | Pop: $(Nm_curr + Nf_curr) (♂$(Nm_curr) ♀$(Nf_curr))  ")
+      flush(stdout)
+    else
+      # Silent mode: only print every 10 generations
+      if gen % 10 == 0 || gen == 1
+        println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
+      end
     end
     
     #note on indexing for the genotypes
@@ -568,25 +578,31 @@ end
     Nm_curr = Nm_next
     Nf_curr = Nf_next
   end
+  
+  # Clear progress bar line if GUI was shown
+  if show_gui
+    println()  # New line after progress bar
+  end
+  
   return(dfall)
 end
 
 #function or run simulation so I can put it in a for loop below
-@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2,maintain_sex_ratio=true)
+@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2,maintain_sex_ratio=true,show_gui=false)
   resultsP=SharedArray{Float64}(reps*gens,27)
   @sync @distributed for i in 1:reps
-    @async resultsP[(1+(i-1)*gens):(gens*i),1:26]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio)
+    @async resultsP[(1+(i-1)*gens):(gens*i),1:26]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui)
     @async resultsP[(1+(i-1)*gens):(gens*i),27]=fill(i,gens)
   end
   return(resultsP)
 end
 
 # Single-threaded runner (copied/adapted from noeverywhere.jl)
-function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2,maintain_sex_ratio=true)
+function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2,maintain_sex_ratio=true,show_gui=false)
   resultsP=zeros(Float64, reps*gens, 27)
   for i in 1:reps
     println("Running replicate $i of $reps...")
-    resultsP[(1+(i-1)*gens):(gens*i),1:26]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio)
+    resultsP[(1+(i-1)*gens):(gens*i),1:26]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui)
     resultsP[(1+(i-1)*gens):(gens*i),27]=fill(i,gens)
   end
   return(resultsP)

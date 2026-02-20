@@ -4,6 +4,7 @@
 
 #load up package for distributing work on many cpu's
 using Distributed
+using Dates
 #add the number of procesess i.e. cores being used
 # addprocs can be heavy on a laptop. It will only run if the environment
 # variable NO_AUTO_ADDPROCS is not set. To skip adding workers for quick
@@ -157,7 +158,7 @@ end
 end
 
 #simulation function with evolving RSC trait
-@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1)
+@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N^2)
   #need to create a deepcopies of all genomes to prevent overwriting.
   # Distribution for traits 1-3 (standard traits)
   TraitD=Normal(mu,var)
@@ -173,8 +174,11 @@ end
   # After mutations (which are continuous), RSC can evolve continuously
   mgf, pgf, mgm, pgm=start_geno(TraitD, TraitD_RSC, N, 20)
   
-  #Preallocating results (22 columns: original 21 + MeanMates)
-  dfall=zeros(generations,22)
+  #Preallocating results (25 columns: original 22 + population,males,females)
+  dfall=zeros(generations,25)
+
+  # offspring staging capacity (all cat-like arrays sized to 2*K)
+  bufsize = Int(2*K)
   
   #Calculating phenotypes for all individuals by adding up paternal and maternal genomes
   #NO CLAMPING - allow natural evolution of all traits
@@ -190,13 +194,13 @@ end
   offspring=zeros(N)
 
   #maternal genome females next gen
-  mgf2=zeros(N,20,ntraits)
+  mgf2=zeros(bufsize,20,ntraits)
   #paternal genome females next gen
-  pgf2=zeros(N,20,ntraits)
+  pgf2=zeros(bufsize,20,ntraits)
   #maternal genome males next gen
-  mgm2=zeros(N,20,ntraits)
+  mgm2=zeros(bufsize,20,ntraits)
   #paternal genome males next gen
-  pgm2=zeros(N,20,ntraits)
+  pgm2=zeros(bufsize,20,ntraits)
 
   #Now for loop to simulate until specified generation.
   @inbounds @views for gen in 1:generations
@@ -347,23 +351,27 @@ end
            egg=make_gamete(pgf,mgf,i)
            #make sperm
            sperm=make_gamete(pgm,mgm,dad)
-           #save paternal genome for female
-           pgf2[fcount,:,:]=sperm
-           #save maternal genome for female
-           mgf2[fcount,:,:]=egg
-           #updated female counter
-           fcount+=1
+           if fcount <= bufsize
+             #save paternal genome for female
+             pgf2[fcount,:,:]=sperm
+             #save maternal genome for female
+             mgf2[fcount,:,:]=egg
+             #updated female counter
+             fcount+=1
+           end
          else #make males
            #make egg
            egg=make_gamete(pgf,mgf,i)
            #make sperm
            sperm=make_gamete(pgm,mgm,dad)
-           #save paternal genome for male
-           pgm2[mcount,:,:]=sperm
-           #save maternal genome for male
-           mgm2[mcount,:,:]=egg
-           #increase male index by 1
-           mcount+=1
+           if mcount <= bufsize
+             #save paternal genome for male
+             pgm2[mcount,:,:]=sperm
+             #save maternal genome for male
+             mgm2[mcount,:,:]=egg
+             #increase male index by 1
+             mcount+=1
+           end
          end
        end
       else
@@ -393,23 +401,27 @@ end
             egg=make_gamete(pgf,mgf,i)
             #make sperm
             sperm=make_gamete(pgm,mgm,dad)
-            #add paternal genome  for female
-            pgf2[fcount,:,:]=sperm
-            #add maternal genome for female
-            mgf2[fcount,:,:]=egg
-            #increase index counter for female offspring
-            fcount+=1
+            if fcount <= bufsize
+              #add paternal genome  for female
+              pgf2[fcount,:,:]=sperm
+              #add maternal genome for female
+              mgf2[fcount,:,:]=egg
+              #increase index counter for female offspring
+              fcount+=1
+            end
           else #make males
             #make egg
             egg=make_gamete(pgf,mgf,i)
             #make sperm
             sperm=make_gamete(pgm,mgm,dad)
-            #make paternal genome for male
-            pgm2[mcount,:,:]=sperm
-            #make maternal genome for male
-            mgm2[mcount,:,:]=egg
-            #increase index counter for male offspring
-            mcount+=1
+            if mcount <= bufsize
+              #make paternal genome for male
+              pgm2[mcount,:,:]=sperm
+              #make maternal genome for male
+              mgm2[mcount,:,:]=egg
+              #increase index counter for male offspring
+              mcount+=1
+            end
           end
         end
         #next add offspring numbers to offpsring counter
@@ -429,9 +441,14 @@ end
     #calculate mean mates per female
     MeanMates = mean(mates_per_female)
 
+    # current population counts
+    females_now = size(fphens,1)
+    males_now = size(mphens,1)
+    population_now = females_now + males_now
+
     #put all model results together
-    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen,MeanMates
-    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates]
+    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen,MeanMates,population,males,females
+    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now]
     dfall[gen,:]=sumdf
     #next generation
 
@@ -459,22 +476,22 @@ end
 end
 
 #function or run simulation so I can put it in a for loop below
-@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
-  resultsP=SharedArray{Float64}(reps*gens,23)
+@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2)
+  resultsP=SharedArray{Float64}(reps*gens,26)
   @sync @distributed for i in 1:reps
-    @async resultsP[(1+(i-1)*gens):(gens*i),1:22]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
-    @async resultsP[(1+(i-1)*gens):(gens*i),23]=fill(i,gens)
+    @async resultsP[(1+(i-1)*gens):(gens*i),1:25]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K)
+    @async resultsP[(1+(i-1)*gens):(gens*i),26]=fill(i,gens)
   end
   return(resultsP)
 end
 
 # Single-threaded runner (copied/adapted from noeverywhere.jl)
-function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1)
-  resultsP=zeros(Float64, reps*gens, 23)
+function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2)
+  resultsP=zeros(Float64, reps*gens, 26)
   for i in 1:reps
     println("Running replicate $i of $reps...")
-    resultsP[(1+(i-1)*gens):(gens*i),1:22]=sim(N,mu,var,a,rsc,tradeoff,gens,d)
-    resultsP[(1+(i-1)*gens):(gens*i),23]=fill(i,gens)
+    resultsP[(1+(i-1)*gens):(gens*i),1:25]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K)
+    resultsP[(1+(i-1)*gens):(gens*i),26]=fill(i,gens)
   end
   return(resultsP)
 end
@@ -495,7 +512,7 @@ if get(ENV, "RUN_FULL_SIMULATION", "0") == "1"
         outdir = "Results_HighVar_20_1000_RSC"
         isdir(outdir) || mkdir(outdir)
         outfile = joinpath(outdir, string("HV_20_1000_",j,"_",k,"_",l,".csv"))
-        data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
+        data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:Rep])
         CSV.write(outfile, data)
       end
     end
@@ -516,9 +533,31 @@ if get(ENV, "RUN_SINGLE_TEST", "0") == "1"
   a_test = 1
   rsc_test = 0.25
   results = runsim_serial(5, 100, mu_test, var_test, a_test, rsc_test, tradeoff_test, gens_test)
-  data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:Rep])
+  data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:Rep])
   timestamp = Dates.format(now(), "yyyy-mm-dd_HHMMSS")
   outfile = "test_simulation_results_$(timestamp).csv"
   CSV.write(outfile, data)
   println("Test simulation completed and saved to: ", outfile)
+end
+
+# Single run entrypoint for K-buffer model (guarded)
+if get(ENV, "RUN_ONE_KBUFFER", "0") == "1"
+  println("Running one K-buffer simulation...")
+  N_one = 100
+  gens_one = 100
+  mu_one = mu
+  var_one = var
+  a_one = 1
+  rsc_one = 0.25
+  tradeoff_one = true
+
+  results_one = runsim_serial(1, N_one, mu_one, var_one, a_one, rsc_one, tradeoff_one, gens_one)
+  data_one = DataFrame(results_one, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:Rep])
+
+  runstamp = Dates.format(now(), "yyyy-mm-ddTHH-MM-SS")
+  outdir = joinpath("CSV data", "run_" * runstamp)
+  isdir(outdir) || mkpath(outdir)
+  outfile = joinpath(outdir, "kbuffer_one_run_" * runstamp * ".csv")
+  CSV.write(outfile, data_one)
+  println("Saved one-run K-buffer CSV to: ", outfile)
 end

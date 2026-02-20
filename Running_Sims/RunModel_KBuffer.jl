@@ -172,7 +172,7 @@ end
   #Initialize population with 4 traits (female, male, sperm, RSC)
   # RSC genotypes initialized from Poisson distribution (sum of Poissons is Poisson)
   # After mutations (which are continuous), RSC can evolve continuously
-  mgf, pgf, mgm, pgm=start_geno(TraitD, TraitD_RSC, N, 20)
+  mgf_init, pgf_init, mgm_init, pgm_init = start_geno(TraitD, TraitD_RSC, N, 20)
   
   #Preallocating results (25 columns: original 22 + population,males,females)
   dfall=zeros(generations,25)
@@ -180,19 +180,21 @@ end
   # offspring staging capacity (all cat-like arrays sized to 2*K)
   bufsize = Int(2*K)
   
-  #Calculating phenotypes for all individuals by adding up paternal and maternal genomes
-  #NO CLAMPING - allow natural evolution of all traits
-  #first make male phenotype array
-  ntraits = size(pgm,3)
-  @views mphens=reduce(hcat,[sum(pgm[:,:,i],dims=2).+sum(mgm[:,:,i],dims=2) for i in 1:ntraits])
-  
-  #now make female phenotype array
-  @views fphens=reduce(hcat,[sum(pgf[:,:,i],dims=2).+sum(mgf[:,:,i],dims=2) for i in 1:ntraits])
-  
-  ####Mating
-  #allocate empty vector to keep track of offspring
-  offspring=zeros(N)
+  # fixed-capacity population arrays; active population can vary each generation
+  ntraits = size(pgm_init,3)
+  mgf = zeros(bufsize,20,ntraits)
+  pgf = zeros(bufsize,20,ntraits)
+  mgm = zeros(bufsize,20,ntraits)
+  pgm = zeros(bufsize,20,ntraits)
+  mgf[1:N,:,:] = mgf_init
+  pgf[1:N,:,:] = pgf_init
+  mgm[1:N,:,:] = mgm_init
+  pgm[1:N,:,:] = pgm_init
 
+  # active counts (these can scale with offspring production)
+  Nf_curr = N
+  Nm_curr = N
+  
   #maternal genome females next gen
   mgf2=zeros(bufsize,20,ntraits)
   #paternal genome females next gen
@@ -214,21 +216,12 @@ end
     #third column is sperm number
     #fourth column is RSC
     
-    #Don't need to redo phenotypes if it is the first generation
-    if gen == 1
+    # recalculate phenotypes on active rows only
+    mphens = reduce(hcat, [sum(pgm[1:Nm_curr,:,i] + mgm[1:Nm_curr,:,i], dims=2) for i in 1:ntraits])
+    fphens = reduce(hcat, [sum(pgf[1:Nf_curr,:,i] + mgf[1:Nf_curr,:,i], dims=2) for i in 1:ntraits])
 
-    #otherwise recalculate phenoypes and reset offsrping to zero
-    #.= reasigns variable without allocating more memory
-    else
-      #NO CLAMPING - recalculate phenotypes naturally
-      mphens.=reduce(hcat,[sum(pgm[:,:,i]+mgm[:,:,i],dims=2) for i in 1:ntraits])
-      
-      #female phenotypes
-      fphens.=reduce(hcat,[sum(pgf[:,:,i]+mgf[:,:,i],dims=2) for i in 1:ntraits])
-      
-      ####Mating
-      offspring.=zeros(N)
-    end
+    ####Mating
+    offspring = zeros(Nm_curr)
     
     #if tradeoff weight probability of precop sucess by both male phenotype and sperm number (eq.1 in text)
     if tradeoff
@@ -332,7 +325,8 @@ end
       
       #sample from male population to get males female mates with
       #weighted by precopulatory sucess calculated above
-      matesM=wsample(1:size(mphens)[1],preprob,mates,replace=false)
+      sample_n = min(mates, Nm_curr)
+      matesM=wsample(1:Nm_curr,preprob,sample_n,replace=false)
 
       #if there is only one male no need to model risk of sperm competition
       if mates==1
@@ -452,25 +446,65 @@ end
     dfall[gen,:]=sumdf
     #next generation
 
-    # Apply mutations with specialized function for RSC trait
+    # produced offspring counts this generation
+    produced_females = fcount - 1
+    produced_males = mcount - 1
+
+    # keep existing adults (including non-mating individuals) in the next generation
+    # while staying within fixed 2*K capacity
+    male_survivors = min(Nm_curr, max(0, bufsize - produced_males))
+    female_survivors = min(Nf_curr, max(0, bufsize - produced_females))
+    Nm_next = produced_males + male_survivors
+    Nf_next = produced_females + female_survivors
+
+    # snapshot current adults before writing next generation
+    pgm_adults = copy(pgm[1:Nm_curr, :, :])
+    mgm_adults = copy(mgm[1:Nm_curr, :, :])
+    pgf_adults = copy(pgf[1:Nf_curr, :, :])
+    mgf_adults = copy(mgf[1:Nf_curr, :, :])
+
+    # Apply mutations to offspring first
     ntraits = size(pgm,3)
-    for i in 1:size(pgm,1)
+    for i in 1:produced_males
       for j in 1:size(pgm,2)
         for k in 1:ntraits
           if k == 4  # RSC trait
             pgm[i,j,k] = mutate_rsc(pgm2[i,j,k])
             mgm[i,j,k] = mutate_rsc(mgm2[i,j,k])
-            pgf[i,j,k] = mutate_rsc(pgf2[i,j,k])
-            mgf[i,j,k] = mutate_rsc(mgf2[i,j,k])
           else  # Other traits (1-3): NO CLAMPING - allow natural evolution
             pgm[i,j,k] = mutate(pgm2[i,j,k])
             mgm[i,j,k] = mutate(mgm2[i,j,k])
+          end
+        end
+      end
+    end
+    for i in 1:produced_females
+      for j in 1:size(pgf,2)
+        for k in 1:ntraits
+          if k == 4  # RSC trait
+            pgf[i,j,k] = mutate_rsc(pgf2[i,j,k])
+            mgf[i,j,k] = mutate_rsc(mgf2[i,j,k])
+          else  # Other traits (1-3): NO CLAMPING - allow natural evolution
             pgf[i,j,k] = mutate(pgf2[i,j,k])
             mgf[i,j,k] = mutate(mgf2[i,j,k])
           end
         end
       end
     end
+
+    # Append surviving adults unchanged after offspring block
+    if male_survivors > 0
+      pgm[(produced_males+1):Nm_next, :, :] .= pgm_adults[1:male_survivors, :, :]
+      mgm[(produced_males+1):Nm_next, :, :] .= mgm_adults[1:male_survivors, :, :]
+    end
+    if female_survivors > 0
+      pgf[(produced_females+1):Nf_next, :, :] .= pgf_adults[1:female_survivors, :, :]
+      mgf[(produced_females+1):Nf_next, :, :] .= mgf_adults[1:female_survivors, :, :]
+    end
+
+    # update active counts for next generation
+    Nm_curr = Nm_next
+    Nf_curr = Nf_next
   end
   return(dfall)
 end
@@ -544,14 +578,15 @@ end
 if get(ENV, "RUN_ONE_KBUFFER", "0") == "1"
   println("Running one K-buffer simulation...")
   N_one = 100
-  gens_one = 100
+  gens_one = 10
+  reps_one = 5
   mu_one = mu
   var_one = var
   a_one = 1
   rsc_one = 0.25
   tradeoff_one = true
 
-  results_one = runsim_serial(1, N_one, mu_one, var_one, a_one, rsc_one, tradeoff_one, gens_one)
+  results_one = runsim_serial(reps_one, N_one, mu_one, var_one, a_one, rsc_one, tradeoff_one, gens_one)
   data_one = DataFrame(results_one, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:Rep])
 
   runstamp = Dates.format(now(), "yyyy-mm-ddTHH-MM-SS")

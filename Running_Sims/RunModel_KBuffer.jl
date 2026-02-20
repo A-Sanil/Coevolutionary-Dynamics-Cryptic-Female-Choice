@@ -158,7 +158,7 @@ end
 end
 
 #simulation function with evolving RSC trait
-@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N^2)
+@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N^2,maintain_sex_ratio=true)
   #need to create a deepcopies of all genomes to prevent overwriting.
   # Distribution for traits 1-3 (standard traits)
   TraitD=Normal(mu,var)
@@ -174,8 +174,8 @@ end
   # After mutations (which are continuous), RSC can evolve continuously
   mgf_init, pgf_init, mgm_init, pgm_init = start_geno(TraitD, TraitD_RSC, N, 20)
   
-  #Preallocating results (25 columns: original 22 + population,males,females)
-  dfall=zeros(generations,25)
+  #Preallocating results (26 columns: original 22 + population,males,females,offspring)
+  dfall=zeros(generations,26)
 
   # offspring staging capacity (all cat-like arrays sized to 2*K)
   bufsize = Int(2*K)
@@ -206,6 +206,11 @@ end
 
   #Now for loop to simulate until specified generation.
   @inbounds @views for gen in 1:generations
+    # Progress HUD: print every 10 generations
+    if gen % 10 == 0 || gen == 1
+      println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
+    end
+    
     #note on indexing for the genotypes
     #pgm[row,column,other]
     #pgm[individual,loci,trait]
@@ -441,14 +446,18 @@ end
     population_now = females_now + males_now
 
     #put all model results together
-    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen,MeanMates,population,males,females
-    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now]
-    dfall[gen,:]=sumdf
-    #next generation
-
+    #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen,MeanMates,population,males,females,offspring
+    # offspring will be calculated after generation transition
+    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now,0.0]
     # produced offspring counts this generation
     produced_females = fcount - 1
     produced_males = mcount - 1
+    total_offspring = produced_females + produced_males
+    
+    # store offspring count in sumdf
+    sumdf[26] = total_offspring
+    dfall[gen,:]=sumdf
+    #next generation
 
     # keep existing adults (including non-mating individuals) in the next generation
     # while staying within fixed 2*K capacity
@@ -502,6 +511,59 @@ end
       mgf[(produced_females+1):Nf_next, :, :] .= mgf_adults[1:female_survivors, :, :]
     end
 
+    # Apply carrying capacity constraint: if population exceeds K, sample down to K
+    total_pop = Nm_next + Nf_next
+    if total_pop > K
+      K_int = Int(floor(K))
+      
+      if maintain_sex_ratio
+        # Maintain 50/50 sex ratio: sample K/2 males and K/2 females separately
+        males_to_keep = Int(floor(K_int / 2))
+        females_to_keep = K_int - males_to_keep
+        
+        # Sample males
+        if males_to_keep < Nm_next
+          keep_male_idx = sample(1:Nm_next, males_to_keep, replace=false)
+          pgm[1:males_to_keep, :, :] .= pgm[keep_male_idx, :, :]
+          mgm[1:males_to_keep, :, :] .= mgm[keep_male_idx, :, :]
+          Nm_next = males_to_keep
+        end
+        
+        # Sample females
+        if females_to_keep < Nf_next
+          keep_female_idx = sample(1:Nf_next, females_to_keep, replace=false)
+          pgf[1:females_to_keep, :, :] .= pgf[keep_female_idx, :, :]
+          mgf[1:females_to_keep, :, :] .= mgf[keep_female_idx, :, :]
+          Nf_next = females_to_keep
+        end
+      else
+        # Random sampling from combined pool (sex ratio can drift)
+        # Create index mappings: males are indices 1:Nm_next, females are Nm_next+1:total_pop
+        keep_indices = sample(1:total_pop, K_int, replace=false)
+        
+        # Separate into male and female indices
+        male_indices = filter(i -> i <= Nm_next, keep_indices)
+        female_indices = filter(i -> i > Nm_next, keep_indices) .- Nm_next
+        
+        males_to_keep = length(male_indices)
+        females_to_keep = length(female_indices)
+        
+        # Copy selected individuals using .= operator (GC optimized)
+        if males_to_keep > 0 && males_to_keep < Nm_next
+          pgm[1:males_to_keep, :, :] .= pgm[male_indices, :, :]
+          mgm[1:males_to_keep, :, :] .= mgm[male_indices, :, :]
+        end
+        
+        if females_to_keep > 0 && females_to_keep < Nf_next
+          pgf[1:females_to_keep, :, :] .= pgf[female_indices, :, :]
+          mgf[1:females_to_keep, :, :] .= mgf[female_indices, :, :]
+        end
+        
+        Nm_next = males_to_keep
+        Nf_next = females_to_keep
+      end
+    end
+
     # update active counts for next generation
     Nm_curr = Nm_next
     Nf_curr = Nf_next
@@ -510,22 +572,22 @@ end
 end
 
 #function or run simulation so I can put it in a for loop below
-@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2)
-  resultsP=SharedArray{Float64}(reps*gens,26)
+@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2,maintain_sex_ratio=true)
+  resultsP=SharedArray{Float64}(reps*gens,27)
   @sync @distributed for i in 1:reps
-    @async resultsP[(1+(i-1)*gens):(gens*i),1:25]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K)
-    @async resultsP[(1+(i-1)*gens):(gens*i),26]=fill(i,gens)
+    @async resultsP[(1+(i-1)*gens):(gens*i),1:26]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio)
+    @async resultsP[(1+(i-1)*gens):(gens*i),27]=fill(i,gens)
   end
   return(resultsP)
 end
 
 # Single-threaded runner (copied/adapted from noeverywhere.jl)
-function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2)
-  resultsP=zeros(Float64, reps*gens, 26)
+function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N^2,maintain_sex_ratio=true)
+  resultsP=zeros(Float64, reps*gens, 27)
   for i in 1:reps
     println("Running replicate $i of $reps...")
-    resultsP[(1+(i-1)*gens):(gens*i),1:25]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K)
-    resultsP[(1+(i-1)*gens):(gens*i),26]=fill(i,gens)
+    resultsP[(1+(i-1)*gens):(gens*i),1:26]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio)
+    resultsP[(1+(i-1)*gens):(gens*i),27]=fill(i,gens)
   end
   return(resultsP)
 end
@@ -567,7 +629,7 @@ if get(ENV, "RUN_SINGLE_TEST", "0") == "1"
   a_test = 1
   rsc_test = 0.25
   results = runsim_serial(5, 100, mu_test, var_test, a_test, rsc_test, tradeoff_test, gens_test)
-  data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:Rep])
+  data = DataFrame(results, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:offspring,:Rep])
   timestamp = Dates.format(now(), "yyyy-mm-dd_HHMMSS")
   outfile = "test_simulation_results_$(timestamp).csv"
   CSV.write(outfile, data)
@@ -577,9 +639,9 @@ end
 # Single run entrypoint for K-buffer model (guarded)
 if get(ENV, "RUN_ONE_KBUFFER", "0") == "1"
   println("Running one K-buffer simulation...")
-  N_one = 100
-  gens_one = 10
-  reps_one = 5
+  N_one = 1000
+  gens_one = 100
+  reps_one = 1
   mu_one = mu
   var_one = var
   a_one = 1
@@ -587,7 +649,7 @@ if get(ENV, "RUN_ONE_KBUFFER", "0") == "1"
   tradeoff_one = true
 
   results_one = runsim_serial(reps_one, N_one, mu_one, var_one, a_one, rsc_one, tradeoff_one, gens_one)
-  data_one = DataFrame(results_one, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:Rep])
+  data_one = DataFrame(results_one, [:MeanMale,:MeanFemale,:SDMale,:SDFemale,:cor,:MeanCount,:SDCount,:is,:int,:BMale,:GMale,:BFemale,:GFemale,:BSperm,:GSperm,:GMF,:GMS,:GFS,:a,:MeanRSC,:Generation,:MeanMates,:population,:males,:females,:offspring,:Rep])
 
   runstamp = Dates.format(now(), "yyyy-mm-ddTHH-MM-SS")
   outdir = joinpath("CSV data", "run_" * runstamp)

@@ -9,12 +9,12 @@
 # ========== EDITABLE PARAMETERS ==========
 
 # Population Parameters
-N = 100              # Initial population size (total = 2*N: N males + N females)
-generations = 20     # Number of generations to simulate
+N = 1000              # Initial population size (total = 2*N: N males + N females)
+generations = 100     # Number of generations to simulate
 replicates = 1       # Number of replicate runs
 
 # Carrying Capacity
-K = N^2              # Carrying capacity options:
+K = 100000              # Carrying capacity options:
                      #   N^2     = 10,000 (for N=100)
                      #   5*N     = 500 (for N=100)
                      #   10*N    = 1,000 (for N=100)

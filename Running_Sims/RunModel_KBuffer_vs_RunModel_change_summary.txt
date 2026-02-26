@@ -1,0 +1,192 @@
+RunModel_KBuffer.jl vs RunModel.jl — Major Change Summary
+Date: 2026-02-26
+
+Files compared:
+- Running_Sims/RunModel_KBuffer.jl
+- Running_Sims/RunModel.jl
+
+============================================================
+1) Simulation API expanded for K-buffer population control
+============================================================
+KBUFFER:
+- sim signature adds carrying-capacity and runtime controls:
+  RunModel_KBuffer.jl:161
+  sim(..., d=-1, K=N^2, maintain_sex_ratio=true, show_gui=false)
+- Same additions propagated to distributed and serial wrappers:
+  RunModel_KBuffer.jl:591, 601
+
+BASE (RunModel.jl):
+- sim and wrappers only take d as optional argument:
+  RunModel.jl:160, 462, 472
+
+Impact:
+- K-buffer version can model variable population size and post-reproduction downsampling.
+- Base version remains fixed-size by design.
+
+============================================================
+2) Core array sizing changed from fixed N to buffered 2*K capacity
+============================================================
+KBUFFER:
+- Results matrix increased from 22 to 26 columns:
+  RunModel_KBuffer.jl:178
+- New offspring staging capacity and working arrays sized by bufsize=2*K:
+  RunModel_KBuffer.jl:181, 185-188, 199-205
+- Active population tracked with counters (Nf_curr, Nm_curr):
+  RunModel_KBuffer.jl:195-196
+
+BASE:
+- Results matrix fixed at 22 columns:
+  RunModel.jl:177
+- Offspring and next-generation arrays fixed at N:
+  RunModel.jl:190-198
+
+Impact:
+- K-buffer supports temporary overproduction and dynamic population transitions.
+- Base model enforces constant-size arrays every generation.
+
+============================================================
+3) Phenotype/offspring recomputation uses active counts (dynamic) vs fixed N
+============================================================
+KBUFFER:
+- Recomputes phenotypes each generation from active slices only:
+  RunModel_KBuffer.jl:235-236
+- Offspring vector size follows current male count:
+  RunModel_KBuffer.jl:239
+
+BASE:
+- First generation uses precomputed phenotypes, later generations update in-place:
+  RunModel.jl:214, 220
+- Offspring vector fixed to N each generation:
+  RunModel.jl:190, 226
+
+Impact:
+- K-buffer equations are applied to currently surviving/retained population.
+- Base always computes within a fixed-N frame.
+
+============================================================
+4) Child (offspring) selection logic: key differences
+============================================================
+Shared logic in both files:
+- Female mates sampled from Poisson(lambda_mates), where lambda is RSC phenotype clamped only at use:
+  KBUFFER: RunModel_KBuffer.jl:317, 321
+  BASE:    RunModel.jl:305, 309
+- If mates == 0, female skips reproduction:
+  KBUFFER: RunModel_KBuffer.jl:338
+  BASE:    RunModel.jl:326
+- If mates == 1: two offspring from same male.
+- If mates > 1: fertilization winners sampled from prob_success(...), two offspring total.
+
+KBUFFER-specific selection protections:
+- Number of sampled mates capped by current male pool:
+  RunModel_KBuffer.jl:343-344
+- Writes to offspring buffers guarded by capacity checks:
+  RunModel_KBuffer.jl:363, 376, 413, 426
+
+BASE:
+- Samples exactly `mates` males directly from full male index set:
+  RunModel.jl:331
+- No buffer-capacity guards on offspring writes (assumes N-sized generation bookkeeping).
+
+Impact:
+- K-buffer is safer under high mate counts / variable population conditions.
+
+============================================================
+5) Trait inheritance and passing to children
+============================================================
+Shared mechanism:
+- `make_gamete(pg, mg, ind)` draws one allele per locus/trait from paternal or maternal copy.
+  KBUFFER: RunModel_KBuffer.jl:144
+  BASE:    RunModel.jl:143
+- Child construction:
+  - egg from female (pgf/mgf, i)
+  - sperm from chosen dad (pgm/mgm, dad)
+  - stored into sex-specific child arrays (male: pgm2/mgm2, female: pgf2/mgf2)
+  KBUFFER examples: 360-376, 410-426
+  BASE examples:    347-360, 393-406
+
+Impact:
+- Inheritance architecture is unchanged conceptually across both files.
+- Major differences are in capacity management and lifecycle, not meiosis logic.
+
+============================================================
+6) Mutation application changed from all-N to produced-only + survivors append
+============================================================
+KBUFFER:
+- Computes produced offspring counts and stores offspring total metric:
+  RunModel_KBuffer.jl:463-465, 468
+- Applies mutation only to produced offspring blocks:
+  produced_males loop:   RunModel_KBuffer.jl:487
+  produced_females loop: RunModel_KBuffer.jl:500
+- Then appends unchanged adult survivors behind offspring blocks:
+  RunModel_KBuffer.jl:474-476, 479-484, 514
+
+BASE:
+- Mutates across full fixed arrays each generation (`for i in 1:size(pgm,1)`):
+  RunModel.jl:440
+
+Shared trait-specific mutation rule:
+- trait 4 (RSC) uses mutate_rsc; traits 1-3 use mutate:
+  KBUFFER: RunModel_KBuffer.jl:490-497, 503-510
+  BASE:    RunModel.jl:443-451
+
+Impact:
+- K-buffer cleanly separates newborn mutation from adult carry-over.
+- Base reassigns/mutates entire fixed population block each generation.
+
+============================================================
+7) New carrying-capacity stage and optional sex-ratio maintenance (KBUFFER only)
+============================================================
+KBUFFER only:
+- Applies post-transition cap if total_pop > K:
+  RunModel_KBuffer.jl:525-526
+- Option A: maintain_sex_ratio=true → sample males/females separately (~50/50):
+  RunModel_KBuffer.jl:529+
+- Option B: maintain_sex_ratio=false → sample from combined pool, sex ratio can drift:
+  RunModel_KBuffer.jl:545+
+- Updates active counts Nm_curr/Nf_curr for next generation:
+  RunModel_KBuffer.jl:579-580
+
+BASE:
+- No carrying-capacity block and no dynamic active-count updates.
+
+Impact:
+- This is the main ecological/demographic extension in K-buffer.
+
+============================================================
+8) Output schema and replicate matrix dimensions changed
+============================================================
+KBUFFER:
+- Per-generation output now stores 26 fields including:
+  MeanMates + population + males + females + offspring
+  RunModel_KBuffer.jl:178, 461, 468
+- Replicate matrix enlarged to 27 columns (26 metrics + Rep):
+  RunModel_KBuffer.jl:591-596, 601-607
+- DataFrame mappings include added columns in test/single-run outputs:
+  RunModel_KBuffer.jl:648, 668
+
+BASE:
+- Per-generation output remains 22 fields (includes MeanMates but no pop breakdown/offspring count):
+  RunModel.jl:177, 434
+- Replicate matrix remains 23 columns (22 metrics + Rep):
+  RunModel.jl:463-466, 473-477
+- DataFrame mapping uses original shorter schema:
+  RunModel.jl:498, 519
+
+============================================================
+9) Runtime/UX additions in KBUFFER
+============================================================
+KBUFFER:
+- `using Dates` at top and one-run entrypoint guarded by RUN_ONE_KBUFFER:
+  RunModel_KBuffer.jl:7, 656+
+- Optional progress bar / silent progress print:
+  RunModel_KBuffer.jl:211, 218, 582-584
+
+BASE:
+- No `RUN_ONE_KBUFFER` block and no progress-bar logic.
+
+============================================================
+Quick takeaways
+============================================================
+- Child creation genetics (gamete formation and trait inheritance) are fundamentally the same in both files.
+- The major divergence is demographic architecture: K-buffer introduces variable population size, offspring buffering, survivor carryover, K-based downsampling, and richer outputs.
+- K-buffer therefore tracks both evolutionary and demographic dynamics; RunModel.jl is the fixed-size baseline.

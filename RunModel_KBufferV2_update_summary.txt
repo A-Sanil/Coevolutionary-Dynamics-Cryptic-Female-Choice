@@ -1,0 +1,63 @@
+RunModel_KBufferV2 Update Summary
+=================================
+
+1. K and buffer sizing
+----------------------
+- Default carrying capacity K changed to N (from N^2).
+- In sim(): K forced as max(N,K).
+- Child buffer size bufsize = max(2*K, max_offspring*N, max_mates*N).
+
+2. Mates and offspring mapping
+------------------------------
+- Introduced max_mates parameter (default 5) and clamping mates to [0,max_mates].
+- Added offspring_from_mates() function with modes:
+  - :poisson
+  - :logistic
+  - :expdecay
+  - :gaussian
+- dynamic_offspring_mode true triggers offspring_from_mates() usage.
+- Offspring mode parameters: offspring_r, offspring_c, offspring_mu, offspring_sigma.
+
+3. Runsim API updated
+---------------------
+- runsim() and runsim_serial() now also accept and forward new parameters.
+
+4. Runner script update (run_kbuffer_simpleV2.jl)
+-----------------------------------------------
+- Added config values for mode and parameters.
+- logs all key settings at startup.
+- uses explicit positional call to runsim_serial() (no keywords).
+
+5. Output postprocess
+---------------------
+- After putting results into DataFrame, added per-replicate cumulative total children:
+    TotalOffspringBorn
+
+6. R plot script
+----------------
+- offspring_mate_curves.R created with logistic/expdecay/gaussian plotting.
+- sim_offspring_vs_mates created from CSV in run folder.
+
+7. Latest run
+-------------
+- 2 replicates, 40 generations, N=200 => 400 initial dev.
+- Output:
+  Running_Sims/CSV data March/run_v2_2026-03-26T13-34-13/kbuffer_v2_results_2026-03-26T13-34-13.csv
+  + plots in: Running_Sims/CSV data March/run_v2_2026-03-26T13-29-27/plots
+
+8. Key search keywords for code navigation
+-----------------------------------------
+- offspring_from_mates
+- dynamic_offspring_mode
+- max_mates
+- max_offspring
+- TotalOffspringBorn
+- bufsize
+- K=N
+
+9. Git actions
+--------------
+- After this summary, run:
+  git add RunModel_KBufferV2_update_summary.txt run_kbuffer_simpleV2.jl RunModel_KBufferV2.jl offspring_mate_curves.R
+  git commit -m "Update KBufferV2 with offspring functions, max mates, and tracking total children"
+  git push

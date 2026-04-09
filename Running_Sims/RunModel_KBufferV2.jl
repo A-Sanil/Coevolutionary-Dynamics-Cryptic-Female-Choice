@@ -152,49 +152,39 @@ end
 
 #mutation function takes in a single allele
 @everywhere function mutate(gene)
-  @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
-    mut=(rand(MTD,1))[1] #if mutation happens draw from mutation distribution
-    gene=gene.+mut #add mutational effect
-    # Note: RSC trait (trait 4) is allowed to have negative values, so no clamping here
-    return(gene)
-  else #if no mutation occurs just return same gene value
-    return(gene)
+  if rand() < 0.005 # fast probability check, 0.5% chance
+    gene += rand(MTD) # draw scalar from mutation distribution
+    return gene < 0.0 ? 0.0 : gene # clamp to 0 if negative
   end
+  return gene
 end
 
 #Enhanced mutation function for RSC trait
 # RSC genotypes can be negative, so mutations are additive on the raw genotypic scale
 @everywhere function mutate_rsc(gene)
-  @views if wsample(tf,mutats,1)[1]#seeing if mutation happens
+  if rand() < 0.005 # fast probability check, 0.5% chance
     # Use mutation variance appropriate for RSC (higher variance trait)
     # Scale mutation variance relative to RSC trait variance (which is 3x standard)
     rsc_mut_sigma = (4*0.25^2/40)^0.5 * 1.5  # Higher mutation variance for RSC
-    mut=(rand(Normal(0, rsc_mut_sigma),1))[1] #if mutation happens draw from mutation distribution
-    gene=gene.+mut #add mutational effect (can be negative)
-    return(gene)
-  else #if no mutation occurs just return same gene value
-    return(gene)
+    gene += rand(Normal(0, rsc_mut_sigma)) # add mutational effect (can be negative)
   end
+  return gene
 end
 
-#Function to make a gamete, i.e.
-#sample a single allele per loci randomly from paternal and maternal copies
-#pg = paternal genome, mg = maternal genome
-#ind = index/ID of dad or mom
-@everywhere function make_gamete(pg,mg,ind)
-  #initialization of new gamete
-  ntraits = size(pg,3)
-  gamete=zeros(1,size(pg)[2],ntraits)
-  @views for j in 1:size(pg)[2] #iterate through loci
-    for k in 1:ntraits #iterate through traits
-      if sample(tf) #sample true or false
-        gamete[1,j,k]=pg[ind,j,k] #if true take from paternal
+# Optimized in-place gamete generation
+# writes directly to the pre-allocated target array to avoid memory allocations
+@everywhere function make_gamete!(target, target_row, pg, mg, ind)
+  nloci = size(pg, 2)
+  ntraits = size(pg, 3)
+  @inbounds for j in 1:nloci
+    for k in 1:ntraits
+      if rand(Bool) # fast optimized 50/50 boolean random
+        target[target_row, j, k] = pg[ind, j, k]
       else
-        gamete[1,j,k]=mg[ind,j,k] #if false take from maternal
+        target[target_row, j, k] = mg[ind, j, k]
       end
     end
   end
-  return gamete #return gamate
 end
 
 #simulation function with evolving RSC trait
@@ -294,9 +284,25 @@ end
     #fourth column is RSC
     
   
-    # recalculate phenotypes on active rows only
-    mphens[1:Nm_curr, :] .= reduce(hcat, [sum(pgm[1:Nm_curr,:,i] + mgm[1:Nm_curr,:,i], dims=2) for i in 1:ntraits])
-    fphens[1:Nf_curr, :] .= reduce(hcat, [sum(pgf[1:Nf_curr,:,i] + mgf[1:Nf_curr,:,i], dims=2) for i in 1:ntraits])
+    # recalculate phenotypes on active rows only using allocation-free loops
+    @inbounds for i in 1:Nm_curr
+      for t in 1:ntraits
+        s = 0.0
+        for l in 1:20
+          s += pgm[i, l, t] + mgm[i, l, t]
+        end
+        mphens[i, t] = s
+      end
+    end
+    @inbounds for i in 1:Nf_curr
+      for t in 1:ntraits
+        s = 0.0
+        for l in 1:20
+          s += pgf[i, l, t] + mgf[i, l, t]
+        end
+        fphens[i, t] = s
+      end
+    end
 
     ####Mating
     offspring = zeros(Nm_curr)
@@ -453,15 +459,13 @@ end
         #model sperm depletion of male after mating
         mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
         for _ in 1:realized_offspring
-          egg=make_gamete(pgf,mgf,i)
-          sperm=make_gamete(pgm,mgm,dad)
           if rand(Bool)
-            pgm2[mcount,:,:]=sperm
-            mgm2[mcount,:,:]=egg
+            make_gamete!(pgm2, mcount, pgm, mgm, dad) # sperm to paternal
+            make_gamete!(mgm2, mcount, pgf, mgf, i)   # egg to maternal
             mcount+=1
           else
-            pgf2[fcount,:,:]=sperm
-            mgf2[fcount,:,:]=egg
+            make_gamete!(pgf2, fcount, pgm, mgm, dad) # sperm to paternal
+            make_gamete!(mgf2, fcount, pgf, mgf, i)   # egg to maternal
             fcount+=1
           end
         end
@@ -481,15 +485,13 @@ end
         ferts=wsample(matesM,probm,realized_offspring,replace=true)
         for dad in ferts
           offspring[dad]=offspring[dad]+1
-          egg=make_gamete(pgf,mgf,i)
-          sperm=make_gamete(pgm,mgm,dad)
           if rand(Bool)
-            pgm2[mcount,:,:]=sperm
-            mgm2[mcount,:,:]=egg
+            make_gamete!(pgm2, mcount, pgm, mgm, dad) # sperm to paternal
+            make_gamete!(mgm2, mcount, pgf, mgf, i)   # egg to maternal
             mcount+=1
           else
-            pgf2[fcount,:,:]=sperm
-            mgf2[fcount,:,:]=egg
+            make_gamete!(pgf2, fcount, pgm, mgm, dad) # sperm to paternal
+            make_gamete!(mgf2, fcount, pgf, mgf, i)   # egg to maternal
             fcount+=1
           end
         end
@@ -548,32 +550,25 @@ end
     pgf_adults[1:Nf_curr, :, :] .= pgf[1:Nf_curr, :, :]
     mgf_adults[1:Nf_curr, :, :] .= mgf[1:Nf_curr, :, :]
 
-    # Apply mutations to offspring first
+    # Apply proper mutations to newly produced offspring using fast vectorized broadcasting.
+    # Traits 1-3 use standard mutation (clamped at 0 to prevent negative phenotypic values).
+    # Trait 4 (RSC) uses mutate_rsc (unclamped, allowing negative evolution).
     ntraits = size(pgm,3)
-    for i in 1:produced_males
-      for j in 1:size(pgm,2)
-        for k in 1:ntraits
-          if k == 4  # RSC trait
-            pgm[i,j,k] = mutate_rsc(pgm2[i,j,k])
-            mgm[i,j,k] = mutate_rsc(mgm2[i,j,k])
-          else  # Other traits (1-3): NO CLAMPING - allow natural evolution
-            pgm[i,j,k] = mutate(pgm2[i,j,k])
-            mgm[i,j,k] = mutate(mgm2[i,j,k])
-          end
-        end
+    if produced_males > 0
+      @views pgm[1:produced_males, :, 1:3] .= mutate.(pgm2[1:produced_males, :, 1:3])
+      @views mgm[1:produced_males, :, 1:3] .= mutate.(mgm2[1:produced_males, :, 1:3])
+      if ntraits >= 4
+        @views pgm[1:produced_males, :, 4:end] .= mutate_rsc.(pgm2[1:produced_males, :, 4:end])
+        @views mgm[1:produced_males, :, 4:end] .= mutate_rsc.(mgm2[1:produced_males, :, 4:end])
       end
     end
-    for i in 1:produced_females
-      for j in 1:size(pgf,2)
-        for k in 1:ntraits
-          if k == 4  # RSC trait
-            pgf[i,j,k] = mutate_rsc(pgf2[i,j,k])
-            mgf[i,j,k] = mutate_rsc(mgf2[i,j,k])
-          else  # Other traits (1-3): NO CLAMPING - allow natural evolution
-            pgf[i,j,k] = mutate(pgf2[i,j,k])
-            mgf[i,j,k] = mutate(mgf2[i,j,k])
-          end
-        end
+
+    if produced_females > 0
+      @views pgf[1:produced_females, :, 1:3] .= mutate.(pgf2[1:produced_females, :, 1:3])
+      @views mgf[1:produced_females, :, 1:3] .= mutate.(mgf2[1:produced_females, :, 1:3])
+      if ntraits >= 4
+        @views pgf[1:produced_females, :, 4:end] .= mutate_rsc.(pgf2[1:produced_females, :, 4:end])
+        @views mgf[1:produced_females, :, 4:end] .= mutate_rsc.(mgf2[1:produced_females, :, 4:end])
       end
     end
 
@@ -657,8 +652,8 @@ end
 @everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0)
   resultsP=SharedArray{Float64}(reps*gens,30)
   @sync @distributed for i in 1:reps
-    @async resultsP[(1+(i-1)*gens):(gens*i),1:29]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui,dynamic_offspring_mode,offspring_mode,offspring_scale,max_mates,max_offspring,offspring_r,offspring_c,offspring_mu,offspring_sigma)
-    @async resultsP[(1+(i-1)*gens):(gens*i),30]=fill(i,gens)
+    resultsP[(1+(i-1)*gens):(gens*i),1:29]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui,dynamic_offspring_mode,offspring_mode,offspring_scale,max_mates,max_offspring,offspring_r,offspring_c,offspring_mu,offspring_sigma)
+    resultsP[(1+(i-1)*gens):(gens*i),30]=fill(i,gens)
   end
   return(resultsP)
 end
@@ -740,4 +735,3 @@ if get(ENV, "RUN_ONE_KBUFFER", "0") == "1"
   CSV.write(outfile, data_one)
   println("Saved one-run K-buffer CSV to: ", outfile)
 end
-

@@ -56,6 +56,9 @@ desktop.ini
 *.bak
 *.log
 
+# Local Python environment
+myenv/
+
 # Allow tracked outputs in Running_Sims/output
 !Running_Sims/output/
 !Running_Sims/output/**/

@@ -9,7 +9,7 @@
 # ========== EDITABLE PARAMETERS ==========
 
 # Population Parameters
-N = 1000              # Initial population size (total = 2*N: N males + N females)
+N = 500              # Initial population size (total = 2*N: N males + N females)
 generations = 100     # Number of generations to simulate
 replicates = 1       # Number of replicate runs
 

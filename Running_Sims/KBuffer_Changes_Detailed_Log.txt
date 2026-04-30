@@ -1,0 +1,311 @@
+KBuffer Model Change Log (Detailed)
+Date: 2026-02-26
+Branch: feature-update
+Primary V2 Commit: 0ad26b4
+
+====================================================================
+OVERVIEW
+====================================================================
+This document summarizes all code changes made during the optimization + V2
+experimental implementation work for the K-buffer simulation pipeline.
+
+Two tracks of edits were made:
+
+1) Baseline optimization updates in RunModel_KBuffer.jl
+   - active-slice fixes
+   - copy-allocation cleanup
+
+2) New experimental model path in RunModel_KBufferV2.jl (+ runner)
+   - dynamic offspring mode (RSC-based)
+   - true offspring accounting
+   - expanded outputs
+
+The V2 work was intentionally isolated in new files so existing workflows can
+continue unchanged.
+
+====================================================================
+PART A — BASELINE OPTIMIZATION UPDATES
+FILE: Running_Sims/RunModel_KBuffer.jl
+====================================================================
+
+A1) Active-slice usage for mating probabilities
+----------------------------------------------
+What changed:
+- Precopulatory probability calculations were changed from full-buffer columns
+  to active male rows only:
+  - mphens[:,3], mphens[:,2]  -> mphens[1:Nm_curr,3], mphens[1:Nm_curr,2]
+
+Why:
+- Avoid computing over unused/blank buffer rows.
+- Better performance and cleaner population-state semantics.
+
+Impact:
+- Reduces unnecessary vector operations each generation.
+- Keeps probabilities aligned with currently alive males.
+
+
+A2) Active-slice usage for standardization/summary stats
+--------------------------------------------------------
+What changed:
+- Means/std/standardizations now use active slices:
+  - fphens[1:Nf_curr,1]
+  - mphens[1:Nm_curr,2]
+  - mphens[1:Nm_curr,3]
+  - mphens[1:Nm_curr,4] for MeanRSC
+
+Why:
+- Full-buffer stats include inactive rows and distort values.
+
+Impact:
+- Output metrics reflect real active population only.
+- Removes work on inactive rows.
+
+
+A3) Female-loop and mates-per-female allocation made active-size aware
+----------------------------------------------------------------------
+What changed:
+- mates_per_female allocated with Nf_curr
+- female loop changed from size(fphens)[1] to 1:Nf_curr
+
+Why:
+- Prevents iterating over blank female slots.
+
+Impact:
+- Less loop overhead per generation.
+- Correct mean mate count for active females.
+
+
+A4) Population output now uses active counters
+---------------------------------------------
+What changed:
+- females_now and males_now now come from Nf_curr/Nm_curr,
+  not from matrix row counts.
+
+Why:
+- Matrix has fixed capacity; active population is tracked by counters.
+
+Impact:
+- population/males/females output columns now reflect true active counts.
+
+
+A5) Output row summary uses active slices
+----------------------------------------
+What changed:
+- sumdf means/std/correlation switched to active slices.
+
+Why:
+- Avoid bias from inactive rows.
+
+Impact:
+- Cleaner and more interpretable telemetry.
+
+
+A6) Removed per-generation copy() allocation for adult snapshot
+--------------------------------------------------------------
+What changed:
+- Replaced copy(...) assignments with in-place broadcasting (.=):
+  pgm_adults, mgm_adults, pgf_adults, mgf_adults snapshots
+
+Why:
+- copy(...) allocates new arrays each generation.
+- In-place assignment uses preallocated buffers.
+
+Impact:
+- Lower allocation pressure and lower GC overhead.
+
+====================================================================
+PART B — V2 EXPERIMENTAL MODEL IMPLEMENTATION
+FILES:
+- Running_Sims/RunModel_KBufferV2.jl
+- Running_Sims/run_kbuffer_simpleV2.jl
+====================================================================
+
+B1) Created separate V2 model file
+---------------------------------
+What changed:
+- Copied RunModel_KBuffer.jl -> RunModel_KBufferV2.jl
+
+Why:
+- Isolate experimental behavior from stable baseline.
+- Enable direct A/B comparison between baseline and experimental model.
+
+Impact:
+- Existing scripts can keep using baseline model unchanged.
+
+
+B2) Added experimental parameters to simulation interface
+--------------------------------------------------------
+What changed:
+- sim/runsim/runsim_serial signatures expanded with:
+  - dynamic_offspring_mode::Bool (default false)
+  - offspring_scale::Float64 (default 1.0)
+
+Why:
+- Toggle experimental behavior without altering default path.
+
+Impact:
+- Backwards-compatible by default.
+- Controlled experimentation possible from runner.
+
+
+B3) Expanded per-generation output schema
+----------------------------------------
+What changed:
+- dfall columns expanded from 26 to 29 in V2.
+- Added fields:
+  27: offspring_desired
+  28: offspring_realized
+  29: offspring_dropped
+- Replicate matrix expanded accordingly to include :Rep as column 30.
+
+Why:
+- Need explicit accounting to audit offspring production vs capacity limits.
+
+Impact:
+- Better diagnostics for variable-offspring behavior.
+
+
+B4) Dynamic offspring mode logic (RSC-weighted)
+------------------------------------------------
+What changed:
+- Added per-female target offspring:
+  target_offspring = rand(Poisson(lambda_offspring))
+  lambda_offspring = max(0.0, offspring_scale * max(0.0, fphens[i,4]) * (1.0 + 0.25*mates))
+- Default path remains fixed target_offspring = 2 when dynamic mode disabled.
+
+Why:
+- Introduce flexible offspring counts tied to RSC and mating opportunity.
+
+Impact:
+- Experimental mode can produce >2 offspring (capacity permitting).
+- Baseline mode preserved when toggle = false.
+
+
+B5) Capacity-safe realization in hot loop
+----------------------------------------
+What changed:
+- For each female:
+  - compute slots_left from current offspring staging occupancy
+  - realized_offspring = min(target_offspring, slots_left)
+  - skip if realized_offspring == 0
+
+Why:
+- Prevent writes beyond staging capacity.
+
+Impact:
+- Protects memory bounds while allowing variable offspring production.
+
+
+B6) Updated father assignment for realized offspring
+---------------------------------------------------
+What changed:
+- mates==1: father fixed; offspring count increments by realized_offspring
+- mates>1: fathers sampled with replacement for realized_offspring
+
+Why:
+- Ensure realized offspring count drives father assignment consistently.
+
+Impact:
+- Parent assignment remains probabilistic and consistent with competition logic.
+
+
+B7) Added true offspring accounting counters
+-------------------------------------------
+What changed:
+- offspring_desired_total increments by target_offspring per female
+- realized_total = produced_females + produced_males
+- dropped_total = max(0, desired_total - realized_total)
+- Stored in sumdf columns 27-29
+
+Why:
+- Needed explicit answer to “how many were requested vs actually created.”
+
+Impact:
+- Clear audit trail for capacity effects.
+
+
+B8) Selection-model vector alignment fix
+---------------------------------------
+What changed:
+- Added nsel = min(length(Malestnd), length(FMalestnd), length(SMalestnd), length(offspring))
+- Selection arrays sliced to nsel for:
+  - DataFrame inputs
+  - gamma interactions
+  - is/reloff calculations
+
+Why:
+- Dynamic male/female counts can diverge and cause broadcast errors.
+
+Impact:
+- Stabilizes selection regression input dimensions.
+
+
+B9) Correlation-length safety fix
+--------------------------------
+What changed:
+- Added ncor = min(Nm_curr, Nf_curr)
+- cor_mf computed on matching-length slices, else NaN if too short
+
+Why:
+- cor(x,y) requires equal lengths; dynamic counts may differ.
+
+Impact:
+- Prevents DimensionMismatch at summary output stage.
+
+
+B10) Added dedicated V2 runner script
+------------------------------------
+What changed:
+- Created run_kbuffer_simpleV2.jl
+- Exposes dynamic_offspring_mode and offspring_scale
+- Writes V2 CSV output with extended columns
+
+Why:
+- Keep baseline runner untouched.
+- Provide quick, explicit entrypoint for V2 tests.
+
+Impact:
+- Cleaner experimentation workflow.
+
+====================================================================
+PART C — VALIDATION / TESTING
+====================================================================
+
+Sanity test command (short run) executed against V2 with dynamic mode enabled:
+- include("RunModel_KBufferV2.jl")
+- runsim_serial(1, 50, 5.0, 1.0, 1.0, 0.25, true, 5, -1, 5000, true, false, true, 1.0)
+
+Observed:
+- Successful completion after dimension fixes.
+- Output shape: (5, 30)
+- New output tail [26:30] present and populated.
+
+====================================================================
+PART D — GIT / DELIVERY
+====================================================================
+
+Branch used:
+- feature-update (same branch as requested)
+
+Committed + pushed files:
+- Running_Sims/RunModel_KBufferV2.jl
+- Running_Sims/run_kbuffer_simpleV2.jl
+
+Commit:
+- 0ad26b4
+- Message: Add KBuffer V2 experimental dynamic offspring model
+
+Remote push:
+- origin/feature-update updated successfully.
+
+====================================================================
+NOTES / CAVEATS
+====================================================================
+
+1) V2 dynamic offspring model is experimental by design.
+2) Baseline model file remains available for direct comparison.
+3) Current desired-offspring formula is tunable via offspring_scale and can be
+   replaced with any alternative weighting equation.
+4) Additional optimization opportunities still available (e.g., make_gamete!
+   scratch buffers, preallocated offspring vectors in baseline path, distributed
+   loop cleanup), but were not required for this delivery set.

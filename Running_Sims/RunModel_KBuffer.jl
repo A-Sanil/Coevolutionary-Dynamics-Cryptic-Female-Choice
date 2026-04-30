@@ -186,7 +186,13 @@ end
   pgf = zeros(bufsize,20,ntraits)
   mgm = zeros(bufsize,20,ntraits)
   pgm = zeros(bufsize,20,ntraits)
-  mgf[1:N,:,:] = mgf_init
+  mphens = zeros(bufsize,ntraits)
+  fphens = zeros(bufsize,ntraits)
+  pgm_adults = zeros(bufsize,20,ntraits)
+  mgm_adults = zeros(bufsize,20,ntraits)
+  pgf_adults = zeros(bufsize,20,ntraits)
+  mgf_adults = zeros(bufsize,20,ntraits)
+  mgf[1:N,:,:] = mgf_init  
   pgf[1:N,:,:] = pgf_init
   mgm[1:N,:,:] = mgm_init
   pgm[1:N,:,:] = pgm_init
@@ -231,56 +237,57 @@ end
     #third column is sperm number
     #fourth column is RSC
     
+  
     # recalculate phenotypes on active rows only
-    mphens = reduce(hcat, [sum(pgm[1:Nm_curr,:,i] + mgm[1:Nm_curr,:,i], dims=2) for i in 1:ntraits])
-    fphens = reduce(hcat, [sum(pgf[1:Nf_curr,:,i] + mgf[1:Nf_curr,:,i], dims=2) for i in 1:ntraits])
+    mphens .= reduce(hcat, [sum(pgm[1:Nm_curr,:,i] + mgm[1:Nm_curr,:,i], dims=2) for i in 1:ntraits])
+    fphens .= reduce(hcat, [sum(pgf[1:Nf_curr,:,i] + mgf[1:Nf_curr,:,i], dims=2) for i in 1:ntraits])
 
     ####Mating
     offspring = zeros(Nm_curr)
     
     #if tradeoff weight probability of precop sucess by both male phenotype and sperm number (eq.1 in text)
     if tradeoff
-      precop= mate.((mphens[:,3].*mphens[:,2]),1/1000,2500)
+      precop= mate.((mphens[1:Nm_curr,3].*mphens[1:Nm_curr,2]),1/1000,2500)
       preprob=precop./sum(precop)
     #if not a tradeoff weight probability of precop success by sperm number (eq. 2 in text)
     else
-      precop = mate.(mphens[:,3],1/20,50)
+      precop = mate.(mphens[1:Nm_curr,3],1/20,50)
       preprob=precop./sum(precop)
     end
     
     #need to standardize traits for selection analysis before sperm depletion
     #standardized female phenotypes
-  sF = max(std(fphens[:,1]), 1e-6)
-  FMalestnd=(fphens[:,1] .- mean(fphens[:,1]))/sF
+  sF = max(std(fphens[1:Nf_curr,1]), 1e-6)
+  FMalestnd=(fphens[1:Nf_curr,1] .- mean(fphens[1:Nf_curr,1]))/sF
 
     #standardized female traits squared for gamma selection coeffients
     FMalestnd2=0.5 .* FMalestnd .^ 2
 
     #standardized male traits for selection analysis
-  sM = max(std(mphens[:,2]), 1e-6)
-  Malestnd=(mphens[:,2] .- mean(mphens[:,2]))/sM
+  sM = max(std(mphens[1:Nm_curr,2]), 1e-6)
+  Malestnd=(mphens[1:Nm_curr,2] .- mean(mphens[1:Nm_curr,2]))/sM
 
     #standardized male traits squared for gamma selection coeffients
     Malestnd2=0.5 .* Malestnd .^ 2
 
     #standardized sperm number for selection analysis
-  sS = max(std(mphens[:,3]), 1e-6)
-  SMalestnd=(mphens[:,3] .- mean(mphens[:,3]))/sS
+  sS = max(std(mphens[1:Nm_curr,3]), 1e-6)
+  SMalestnd=(mphens[1:Nm_curr,3] .- mean(mphens[1:Nm_curr,3]))/sS
 
     #calculate mean sperm number to save for simulation output
-    Meansperm=mean(mphens[:,3])
+    Meansperm=mean(mphens[1:Nm_curr,3])
 
     #calculate mean RSC to save for simulation output (if present)
     # RSC phenotypes are sum of alleles (additive model) with floor, so report mean directly
     if ntraits >= 4
       # Report mean RSC phenotype (additive model, positive values only)
-      MeanRSC = mean(mphens[:,4])
+      MeanRSC = mean(mphens[1:Nm_curr,4])
     else
       MeanRSC = NaN
     end
 
     #calculate standard deviation of sperm number to save for model output
-  Stdsperm=std(mphens[:,3])
+  Stdsperm=std(mphens[1:Nm_curr,3])
 
     #standardized sperm number for gamma selection coeffients
     SMalestnd2=0.5 .* SMalestnd .^ 2
@@ -301,10 +308,10 @@ end
     mcount=1
     
     #initialize array to track number of mates per female for this generation
-    mates_per_female = zeros(size(fphens)[1])
+    mates_per_female = zeros(Nf_curr)
 
     #next part of code is to loop through all females to mate and reproduce
-    for i in 1:size(fphens)[1]
+    for i in 1:Nf_curr
       #mates = number of males a female mates with
       #Use evolving RSC trait to determine number of mates
       #RSC phenotype directly serves as lambda (mean) for Poisson distribution
@@ -451,14 +458,14 @@ end
     MeanMates = mean(mates_per_female)
 
     # current population counts
-    females_now = size(fphens,1)
-    males_now = size(mphens,1)
+    females_now = Nf_curr
+    males_now = Nm_curr
     population_now = females_now + males_now
 
     #put all model results together
     #mean male,mean female, std male, std female,cor,sperm count, sperm count std,is,int,beta,gamma,A,MeanRSC,a,gen,MeanMates,population,males,females,offspring
     # offspring will be calculated after generation transition
-    sumdf=[mean(mphens[:,2]),mean(fphens[:,1]),std(mphens[:,2]),std(fphens[:,1]),cor(mphens[:,2],fphens[:,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now,0.0]
+    sumdf=[mean(mphens[1:Nm_curr,2]),mean(fphens[1:Nf_curr,1]),std(mphens[1:Nm_curr,2]),std(fphens[1:Nf_curr,1]),cor(mphens[1:Nm_curr,2],fphens[1:Nf_curr,1]),Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now,0.0]
     # produced offspring counts this generation
     produced_females = fcount - 1
     produced_males = mcount - 1
@@ -477,10 +484,10 @@ end
     Nf_next = produced_females + female_survivors
 
     # snapshot current adults before writing next generation
-    pgm_adults = copy(pgm[1:Nm_curr, :, :])
-    mgm_adults = copy(mgm[1:Nm_curr, :, :])
-    pgf_adults = copy(pgf[1:Nf_curr, :, :])
-    mgf_adults = copy(mgf[1:Nf_curr, :, :])
+    pgm_adults[1:Nm_curr, :, :] .= pgm[1:Nm_curr, :, :]
+    mgm_adults[1:Nm_curr, :, :] .= mgm[1:Nm_curr, :, :]
+    pgf_adults[1:Nf_curr, :, :] .= pgf[1:Nf_curr, :, :]
+    mgf_adults[1:Nf_curr, :, :] .= mgf[1:Nf_curr, :, :]
 
     # Apply mutations to offspring first
     ntraits = size(pgm,3)

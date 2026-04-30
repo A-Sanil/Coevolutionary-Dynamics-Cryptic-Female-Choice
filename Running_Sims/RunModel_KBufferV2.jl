@@ -10,7 +10,18 @@ using Dates
 # variable NO_AUTO_ADDPROCS is not set. To skip adding workers for quick
 # local runs set NO_AUTO_ADDPROCS=1 in your shell before invoking julia.
 if !haskey(ENV, "NO_AUTO_ADDPROCS")
-  addprocs(23)
+  cpu_threads = Sys.CPU_THREADS
+  default_target = max(1, cpu_threads - 1)
+  requested_target = try
+    parse(Int, get(ENV, "N_WORKERS", string(default_target)))
+  catch
+    default_target
+  end
+  target_workers = clamp(requested_target, 1, max(1, cpu_threads - 1))
+  workers_to_add = max(0, target_workers - nworkers())
+  if workers_to_add > 0
+    addprocs(workers_to_add)
+  end
 end
 
 #load up packages across all cores

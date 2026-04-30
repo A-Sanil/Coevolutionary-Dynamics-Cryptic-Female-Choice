@@ -1,0 +1,24 @@
+KBuffer V2 Benchmark Report
+Date: 2026-02-26 19:54:00
+
+Configuration
+- Ns: [400, 800, 1200]
+- generations: 100
+- replicates: 8
+- maintain_sex_ratio: true
+- dynamic_offspring_mode: true
+- offspring_scale: 1.0
+- workers: 7
+
+Timings (seconds)
+- N=400: serial=96.3085, parallel=7.1032, speedup=13.558x
+- N=800: serial=166.4352, parallel=10.6917, speedup=15.567x
+- N=1200: serial=156.6506, parallel=14.0588, speedup=11.142x
+
+Empirical scaling (log-log slope)
+- serial slope: 0.48
+- parallel slope: 0.618
+
+Interpretation
+- Runtime approximately scales as O(N^p), where p is the fitted slope above.
+- This is empirical complexity for this configuration (not a strict symbolic proof).

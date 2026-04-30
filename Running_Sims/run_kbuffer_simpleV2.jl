@@ -7,7 +7,7 @@
 # ========== EDITABLE PARAMETERS ==========
 N = 500
 generations = 100
-replicates = 1
+replicates = 10
 
 K = 100000
 maintain_sex_ratio = true
@@ -27,6 +27,11 @@ tradeoff = true
 dynamic_offspring_mode = true
 offspring_scale = 1.0
 
+# execution mode
+# true  = use distributed replicate-level parallelism (runsim)
+# false = use single-process serial execution (runsim_serial)
+use_parallel = true
+
 # =====================================================
 
 include("RunModel_KBufferV2.jl")
@@ -44,13 +49,26 @@ println("  Maintain 50/50 sex ratio: $maintain_sex_ratio")
 println("  Progress display: $(show_gui ? "Live progress bar" : "Periodic updates")")
 println("  Dynamic offspring mode: $dynamic_offspring_mode")
 println("  Offspring scale: $offspring_scale")
+println("  Parallel mode: $use_parallel")
 println("="^60)
 println()
 
-results = runsim_serial(
-    replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
-    K, maintain_sex_ratio, show_gui, dynamic_offspring_mode, offspring_scale
-)
+run_show_gui = use_parallel ? false : show_gui
+run_mode = (use_parallel && replicates > 1) ? "parallel" : "serial"
+
+elapsed_seconds = @elapsed begin
+    global results = if use_parallel && replicates > 1
+        runsim(
+            replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
+            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_scale
+        )
+    else
+        runsim_serial(
+            replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
+            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_scale
+        )
+    end
+end
 
 data = DataFrame(results, [
     :MeanMale, :MeanFemale, :SDMale, :SDFemale, :cor,
@@ -72,6 +90,8 @@ println()
 println("="^60)
 println("✓ V2 simulation complete!")
 println("="^60)
+println("Run mode: $run_mode")
+println("Elapsed seconds: $(round(elapsed_seconds, digits=3))")
 println("Saved CSV to:")
 println("  $outfile")
 println("="^60)

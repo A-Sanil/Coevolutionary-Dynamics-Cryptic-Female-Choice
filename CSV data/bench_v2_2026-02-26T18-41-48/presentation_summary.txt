@@ -1,0 +1,51 @@
+KBuffer V2 Benchmark — Presentation Summary
+Date: 2026-02-26
+
+1) Objective
+Evaluate runtime performance of serial vs distributed-parallel execution for KBuffer V2 and estimate empirical runtime scaling with N.
+
+2) Code changes applied (minimal, non-model-logic)
+- Adaptive worker setup in RunModel_KBufferV2.jl:
+  * Replaced fixed addprocs(23) with auto worker selection based on Sys.CPU_THREADS
+  * Added environment override via N_WORKERS
+  * Retained NO_AUTO_ADDPROCS behavior
+- Runner toggle/timing in run_kbuffer_simpleV2.jl:
+  * Added use_parallel switch
+  * Added elapsed time reporting
+  * Uses runsim for parallel when enabled, runsim_serial otherwise
+- Dedicated benchmark script:
+  * Running_Sims/benchmark_kbuffer_v2.jl (BenchmarkTools)
+
+3) Benchmark configuration
+- Population sizes (N): [100, 200, 400]
+- Generations: 20
+- Replicates per benchmark call: 2
+- Dynamic offspring mode: true
+- offspring_scale: 1.0
+- maintain_sex_ratio: true
+- Workers available in session: 18
+
+4) Raw timing results
+- N=100: serial=0.6897644 s, parallel=24.1137431 s, speedup=0.0286x
+- N=200: serial=2.3346386 s, parallel=26.3761597 s, speedup=0.0885x
+- N=400: serial=4.7807214 s, parallel=15.3963327 s, speedup=0.3105x
+
+5) Empirical complexity estimate (log-log fit)
+- Serial slope p ≈ 1.397   => approximately O(N^1.40) over tested range
+- Parallel slope p ≈ -0.324 => unstable/non-physical estimate from high overhead regime
+
+6) Interpretation for presentation
+- At these small/medium settings, distributed parallel execution is slower than serial due to overhead (process startup, distributed scheduling, data movement, worker logging).
+- Serial runtime increases with N roughly superlinearly over this range.
+- Current benchmark indicates parallelization should be reserved for substantially larger workloads (larger N, generations, and/or replicates) to amortize overhead.
+
+7) Data files generated
+- benchmark_results.csv
+- benchmark_report.txt
+- presentation_summary.txt (this file)
+
+8) Recommended next benchmark pass (for decision-quality production defaults)
+- Increase workload: e.g., N in [400, 800, 1200], generations >= 100, replicates >= 8
+- Benchmark worker counts explicitly: 1, 2, 4, 8, 12, 16
+- Disable periodic worker console printing during benchmark runs
+- Choose default mode from median runtime across 3 repeats per configuration

@@ -463,11 +463,11 @@ end
         continue
       end
 
-      #if there is only one male no need to model risk of sperm competition
+      # LEVEL 1 (single-mate path): no sperm competition, one sire gets all realized offspring
       if mates==1
         dad = matesM[1]
         offspring[dad] += realized_offspring
-        #model sperm depletion of male after mating
+        # Post-mating sperm depletion cost is still applied to the single sire
         mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
         for _ in 1:realized_offspring
           if rand(Bool)
@@ -481,18 +481,25 @@ end
           end
         end
       else
-        #check if running selection analysis not cfc
+        # LEVEL 2 (multi-mate path): post-copulatory sperm competition among candidate sires
+        # d < 0  -> non-CFC: female phenotype sets optimum in prob_success
+        # d >= 0 -> CFC: fixed optimum d sets fertilization bias
         if d<0
-          #calcualte probs of fertilization sucess for males
+          # Calculate fertilization weights for mates in non-CFC mode
           probm=prob_success(mphens[matesM,2],mphens[matesM,3],a,fphens[i,1])
+          # Optional fair raffle baseline (sperm count only):
+          # probm=prob_successFR(mphens[matesM,3])
         else
-          #calculate probs of fertilization sucess for males for cryptic female choice
+          # Calculate fertilization weights for mates in cryptic female choice mode
           probm=prob_success(mphens[matesM,2],mphens[matesM,3],a,d)
-          #deplete ejaculation for males
-          mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
         end
 
-        # sample realized fathers for each offspring
+        # Apply sperm depletion to all males that mated with this female.
+        # This mirrors original RunModel behavior and ensures ejaculate cost is paid
+        # in both non-CFC and CFC competition modes.
+        mphens[matesM,3]=mphens[matesM,3].*exp.(-0.2)
+
+        # LEVEL 3: draw sires for each realized offspring from sperm-competition weights
         ferts=wsample(matesM,probm,realized_offspring,replace=true)
         for dad in ferts
           offspring[dad]=offspring[dad]+1

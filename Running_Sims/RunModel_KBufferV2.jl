@@ -275,12 +275,16 @@ end
       prog = Int(round(gen/generations * 50))
       bar = "█"^prog * "░"^(50-prog)
       percent = Int(round(gen/generations * 100))
-      print("\r[$bar] $percent% | Gen: $gen/$generations | Pop: $(Nm_curr + Nf_curr) (♂$(Nm_curr) ♀$(Nf_curr))  ")
-      flush(stdout)
+      if myid() == 1
+        print("\r[$bar] $percent% | Gen: $gen/$generations | Pop: $(Nm_curr + Nf_curr) (♂$(Nm_curr) ♀$(Nf_curr))  ")
+        flush(stdout)
+      end
     else
         # Silent mode: periodic updates controlled by progress_interval
         if gen % progress_interval == 0 || gen == 1
-          println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
+          if myid() == 1
+            println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
+          end
         end
         # Checkpoint: write partial CSV for this replicate if requested
         if checkpoint_interval > 0 && (gen % checkpoint_interval == 0 || gen == generations)

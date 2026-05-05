@@ -6,7 +6,7 @@
 
 # ========== EDITABLE PARAMETERS ==========
 N = 500
-generations = 100
+generations = 1000
 replicates = 10
 
 K = 100000
@@ -29,6 +29,12 @@ offspring_scale = 1.0
 # Offspring mode should be a Symbol: :poisson, :logistic, :expdecay, or :gaussian
 # default to :poisson for the original behavior
 offspring_mode = :poisson
+
+# progress and checkpointing
+# how often to print status (generations)
+progress_interval = 100
+# how often to write partial CSV checkpoints (0 = disabled)
+checkpoint_interval = 100
 
 # execution mode
 # true  = use distributed replicate-level parallelism (runsim)
@@ -67,12 +73,14 @@ elapsed_seconds = @elapsed begin
     global results = if use_parallel && replicates > 1
         runsim(
             replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
-            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_mode, offspring_scale
+            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_mode, offspring_scale,
+            progress_interval, checkpoint_interval
         )
     else
         runsim_serial(
             replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
-            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_mode, offspring_scale
+            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_mode, offspring_scale,
+            progress_interval, checkpoint_interval
         )
     end
 end

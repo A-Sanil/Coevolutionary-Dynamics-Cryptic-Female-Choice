@@ -200,7 +200,7 @@ end
 
 #simulation function with evolving RSC trait
 # V2 adds optional dynamic offspring mode and true offspring totals.
-@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0)
+@everywhere function sim(N,mu,var,a,rsc,tradeoff,generations,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0,progress_interval=10,checkpoint_interval=0,repid=0)
   # sim() runs a full cohort of generation dynamics in K-buffer model V2.
   # Parameters:
   #  - N: initial male/female count each, so initial pop = 2*N
@@ -278,10 +278,30 @@ end
       print("\r[$bar] $percent% | Gen: $gen/$generations | Pop: $(Nm_curr + Nf_curr) (♂$(Nm_curr) ♀$(Nf_curr))  ")
       flush(stdout)
     else
-      # Silent mode: only print every 10 generations
-      if gen % 10 == 0 || gen == 1
-        println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
-      end
+        # Silent mode: periodic updates controlled by progress_interval
+        if gen % progress_interval == 0 || gen == 1
+          println("  Generation $gen/$generations (Pop: $(Nm_curr + Nf_curr))")
+        end
+        # Checkpoint: write partial CSV for this replicate if requested
+        if checkpoint_interval > 0 && (gen % checkpoint_interval == 0 || gen == generations)
+          try
+            cols = [:MeanMale, :MeanFemale, :SDMale, :SDFemale, :cor,
+                    :MeanCount, :SDCount, :is, :int,
+                    :BMale, :GMale, :BFemale, :GFemale, :BSperm, :GSperm,
+                    :GMF, :GMS, :GFS, :a, :MeanRSC, :Generation, :MeanMates,
+                    :population, :males, :females, :offspring,
+                    :offspring_desired, :offspring_realized, :offspring_dropped]
+            nrows = gen
+            partial = DataFrame(dfall[1:nrows,1:29], cols)
+            outroot = get(ENV, "BRC_OUTPUT_ROOT", "CSV data")
+            runstamp = Dates.format(now(), "yyyy-mm-ddTHH-MM-SS")
+            fname = joinpath(outroot, string("kbuffer_v2_rep", repid, "_progress_", runstamp, ".csv"))
+            isdir(outroot) || mkpath(outroot)
+            CSV.write(fname, partial)
+          catch e
+            @warn "checkpoint write failed" error=(e, catch_backtrace())
+          end
+        end
     end
     
     #note on indexing for the genotypes
@@ -667,21 +687,21 @@ end
 end
 
 #function or run simulation so I can put it in a for loop below
-@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0)
+@everywhere function runsim(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0,progress_interval=10,checkpoint_interval=0)
   resultsP=SharedArray{Float64}(reps*gens,30)
   @sync @distributed for i in 1:reps
-    resultsP[(1+(i-1)*gens):(gens*i),1:29]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui,dynamic_offspring_mode,offspring_mode,offspring_scale,max_mates,max_offspring,offspring_r,offspring_c,offspring_mu,offspring_sigma)
+    resultsP[(1+(i-1)*gens):(gens*i),1:29]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui,dynamic_offspring_mode,offspring_mode,offspring_scale,max_mates,max_offspring,offspring_r,offspring_c,offspring_mu,offspring_sigma,progress_interval,checkpoint_interval,i)
     resultsP[(1+(i-1)*gens):(gens*i),30]=fill(i,gens)
   end
   return(resultsP)
 end
 
 # Single-threaded runner (copied/adapted from noeverywhere.jl)
-function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0)
+function runsim_serial(reps,N,mu,var,a,rsc,tradeoff,gens,d=-1,K=N,maintain_sex_ratio=true,show_gui=false,dynamic_offspring_mode=false,offspring_mode=:poisson,offspring_scale=1.0,max_mates=5,max_offspring=5,offspring_r=1.0,offspring_c=2.0,offspring_mu=2.0,offspring_sigma=1.0,progress_interval=10,checkpoint_interval=0)
   resultsP=zeros(Float64, reps*gens, 30)
   for i in 1:reps
     println("Running replicate $i of $reps...")
-    resultsP[(1+(i-1)*gens):(gens*i),1:29]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui,dynamic_offspring_mode,offspring_mode,offspring_scale,max_mates,max_offspring,offspring_r,offspring_c,offspring_mu,offspring_sigma)
+    resultsP[(1+(i-1)*gens):(gens*i),1:29]=sim(N,mu,var,a,rsc,tradeoff,gens,d,K,maintain_sex_ratio,show_gui,dynamic_offspring_mode,offspring_mode,offspring_scale,max_mates,max_offspring,offspring_r,offspring_c,offspring_mu,offspring_sigma,progress_interval,checkpoint_interval,i)
     resultsP[(1+(i-1)*gens):(gens*i),30]=fill(i,gens)
   end
   return(resultsP)

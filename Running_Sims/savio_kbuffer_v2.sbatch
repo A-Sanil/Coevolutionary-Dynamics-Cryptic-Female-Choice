@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=kbufferv2
-#SBATCH --account=co_youraccount
 #SBATCH --partition=savio3
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

@@ -13,8 +13,8 @@ set -euo pipefail
 
 module load julia
 
-# Use SCRATCH if available (Savio), otherwise fall back to default scratch path.
-SCRATCH_ROOT="${SCRATCH:-/global/scratch/users/$USER}"
+# Use explicit username path as requested.
+SCRATCH_ROOT="/global/scratch/users/asanil"
 
 # Move to the simulation folder in scratch storage.
 cd "$SCRATCH_ROOT/Coevolutionary-Dynamics-Cryptic-Female-Choice/Running_Sims"

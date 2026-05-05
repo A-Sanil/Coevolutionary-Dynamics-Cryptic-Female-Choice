@@ -26,6 +26,9 @@ tradeoff = true
 
 dynamic_offspring_mode = true
 offspring_scale = 1.0
+# Offspring mode should be a Symbol: :poisson, :logistic, :expdecay, or :gaussian
+# default to :poisson for the original behavior
+offspring_mode = :poisson
 
 # execution mode
 # true  = use distributed replicate-level parallelism (runsim)
@@ -64,12 +67,12 @@ elapsed_seconds = @elapsed begin
     global results = if use_parallel && replicates > 1
         runsim(
             replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
-            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_scale
+            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_mode, offspring_scale
         )
     else
         runsim_serial(
             replicates, N, mu, var, a, rsc, tradeoff, generations, -1,
-            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_scale
+            K, maintain_sex_ratio, run_show_gui, dynamic_offspring_mode, offspring_mode, offspring_scale
         )
     end
 end

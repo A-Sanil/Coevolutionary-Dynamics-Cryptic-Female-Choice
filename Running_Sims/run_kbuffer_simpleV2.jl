@@ -6,12 +6,12 @@
 
 # ========== EDITABLE PARAMETERS ==========
 N = 500
-generations = 1000
-replicates = 10
+generations = parse(Int, get(ENV, "GENERATIONS", "10"))
+replicates = parse(Int, get(ENV, "REPLICATES", "10"))
 
-K = 100000
+K = parse(Int, get(ENV, "K_CAPACITY", "1000"))
 maintain_sex_ratio = true
-show_gui = true
+show_gui = get(ENV, "SHOW_GUI", "0") == "1"
 
 mu = 5.0
 var = 1.0
@@ -32,9 +32,9 @@ offspring_mode = :poisson
 
 # progress and checkpointing
 # how often to print status (generations)
-progress_interval = 100
+progress_interval = parse(Int, get(ENV, "PROGRESS_INTERVAL", "250"))
 # how often to write partial CSV checkpoints (0 = disabled)
-checkpoint_interval = 100
+checkpoint_interval = parse(Int, get(ENV, "CHECKPOINT_INTERVAL", "0"))
 
 # execution mode
 # true  = use distributed replicate-level parallelism (runsim)
@@ -44,6 +44,15 @@ use_parallel = true
 # optional output root for cluster runs
 # set BRC_OUTPUT_ROOT to a path like /global/scratch/users/<you>/kbuffer_outputs
 output_root = get(ENV, "BRC_OUTPUT_ROOT", "CSV data")
+
+# Smoke test mode: force a tiny serial run for quick validation.
+smoke_test = get(ENV, "SMOKE_TEST", "0") == "1"
+if smoke_test
+    generations = 1
+    replicates = 1
+    use_parallel = false
+    show_gui = false
+end
 
 # =====================================================
 
@@ -63,6 +72,7 @@ println("  Progress display: $(show_gui ? "Live progress bar" : "Periodic update
 println("  Dynamic offspring mode: $dynamic_offspring_mode")
 println("  Offspring scale: $offspring_scale")
 println("  Parallel mode: $use_parallel")
+println("  Smoke test mode: $smoke_test")
 println("="^60)
 println()
 

@@ -105,6 +105,8 @@ end
 @everywhere function prob_success(malesT,malesS,a,d)
   prob = exp.((.-(malesT .- d).^2)./(2 .* a)) .* (malesS)
   # guard against all-zero or non-finite weights
+  # clamp negative values from numeric drift or negative trait values before sampling
+  prob[prob .< 0] .= 0.0
   # replace non-finite entries with 0
   prob[.!isfinite.(prob)] .= 0.0
   s = sum(prob)
@@ -118,7 +120,14 @@ end
 
 #Probability of fertilization sucess for fair raffle
 @everywhere function prob_successFR(malesS)
-  return(malesS)./sum(malesS)
+  prob = copy(malesS)
+  prob[prob .< 0] .= 0.0
+  s = sum(prob)
+  if s == 0.0 || !isfinite(s)
+    prob .= 1.0
+    s = sum(prob)
+  end
+  return prob ./ s
 end
 
 # Helper: determine per-female offspring based on mate count and chosen function

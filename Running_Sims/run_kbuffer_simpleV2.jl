@@ -32,6 +32,10 @@ offspring_scale = 1.0
 # false = use single-process serial execution (runsim_serial)
 use_parallel = true
 
+# optional output root for cluster runs
+# set BRC_OUTPUT_ROOT to a path like /global/scratch/users/<you>/kbuffer_outputs
+output_root = get(ENV, "BRC_OUTPUT_ROOT", "CSV data")
+
 # =====================================================
 
 include("RunModel_KBufferV2.jl")
@@ -81,7 +85,7 @@ data = DataFrame(results, [
 ])
 
 runstamp = Dates.format(now(), "yyyy-mm-ddTHH-MM-SS")
-outdir = joinpath("CSV data", "run_v2_" * runstamp)
+outdir = joinpath(output_root, "run_v2_" * runstamp)
 isdir(outdir) || mkpath(outdir)
 outfile = joinpath(outdir, "kbuffer_v2_results_" * runstamp * ".csv")
 CSV.write(outfile, data)
@@ -92,6 +96,7 @@ println("✓ V2 simulation complete!")
 println("="^60)
 println("Run mode: $run_mode")
 println("Elapsed seconds: $(round(elapsed_seconds, digits=3))")
+println("Output root: $output_root")
 println("Saved CSV to:")
 println("  $outfile")
 println("="^60)

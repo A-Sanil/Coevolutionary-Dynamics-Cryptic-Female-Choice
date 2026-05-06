@@ -554,7 +554,14 @@ end
     #make data frame to calculate selection coeffients
     dfO=DataFrame(RelFit=reloff,Male=Malestnd_sel,Maleq=Malestnd2_sel,FMale=FMalestnd_sel,FMaleq=FMalestnd2_sel,SMale=SMalestnd_sel,SMaleq=SMalestnd2_sel,MFq=gmf,MSq=gms,FSq=gfs)
     #calculate selection coeffients
-    model=lm(@formula(RelFit ~ Male+ Maleq+FMale+FMaleq+SMale+SMaleq+MFq+MSq+FSq),dfO)
+    # Initialize model with NaN-filled coefficients in case fitting fails
+    model_coefs = fill(NaN, 10)
+    try
+      model=lm(@formula(RelFit ~ Male+ Maleq+FMale+FMaleq+SMale+SMaleq+MFq+MSq+FSq),dfO)
+      model_coefs = coef(model)
+    catch
+      # If the model fails to fit (e.g., no offspring, singular matrix), keep NaN placeholders
+    end
     
     #calculate mean mates per female
     MeanMates = mean(mates_per_female)
@@ -569,7 +576,7 @@ end
     # offspring will be calculated after generation transition
     ncor = min(Nm_curr, Nf_curr)
     cor_mf = ncor > 1 ? cor(mphens[1:ncor,2], fphens[1:ncor,1]) : NaN
-    sumdf=[mean(mphens[1:Nm_curr,2]),mean(fphens[1:Nf_curr,1]),std(mphens[1:Nm_curr,2]),std(fphens[1:Nf_curr,1]),cor_mf,Meansperm,Stdsperm,is,coef(model)[1],coef(model)[2],coef(model)[3],coef(model)[4],coef(model)[5],coef(model)[6],coef(model)[7],coef(model)[8],coef(model)[9],coef(model)[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now,0.0,0.0,0.0,0.0]
+    sumdf=[mean(mphens[1:Nm_curr,2]),mean(fphens[1:Nf_curr,1]),std(mphens[1:Nm_curr,2]),std(fphens[1:Nf_curr,1]),cor_mf,Meansperm,Stdsperm,is,model_coefs[1],model_coefs[2],model_coefs[3],model_coefs[4],model_coefs[5],model_coefs[6],model_coefs[7],model_coefs[8],model_coefs[9],model_coefs[10],a,MeanRSC,gen,MeanMates,population_now,males_now,females_now,0.0,0.0,0.0,0.0]
     # produced offspring counts this generation
     produced_females = fcount - 1
     produced_males = mcount - 1

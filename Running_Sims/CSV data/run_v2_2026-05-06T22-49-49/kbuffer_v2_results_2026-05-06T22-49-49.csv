@@ -1,0 +1,2 @@
+MeanMale,MeanFemale,SDMale,SDFemale,cor,MeanCount,SDCount,is,int,BMale,GMale,BFemale,GFemale,BSperm,GSperm,GMF,GMS,GFS,a,MeanRSC,Generation,MeanMates,population,males,females,offspring,offspring_desired,offspring_realized,offspring_dropped,Rep
+50.82259458203232,50.147121841263484,9.79134770833801,10.025364417360738,0.05699081165469507,50.22187342783923,9.558550491856982,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,4.016,1.0,3.92,1000.0,500.0,500.0,0.0,0.0,0.0,0.0,1.0

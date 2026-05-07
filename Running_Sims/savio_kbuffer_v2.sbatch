@@ -12,14 +12,18 @@ set -euo pipefail
 
 module load julia
 
-# Use explicit username path as requested.
-SCRATCH_ROOT="/global/scratch/users/asanil"
+# Use the submitting user's scratch space on Savio.
+SCRATCH_ROOT="/global/scratch/users/${USER}"
 
 # Move to the simulation folder in scratch storage.
 cd "$SCRATCH_ROOT/Coevolutionary-Dynamics-Cryptic-Female-Choice/Running_Sims"
 
 # Keep outputs in scratch storage, not in home.
 export BRC_OUTPUT_ROOT="$SCRATCH_ROOT/kbuffer_csv"
+export JULIA_DEPOT_PATH="$SCRATCH_ROOT/julia_depot"
+export JULIA_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
 mkdir -p "$BRC_OUTPUT_ROOT" logs
 
 # Run worker count should generally be cpus-per-task minus 1.

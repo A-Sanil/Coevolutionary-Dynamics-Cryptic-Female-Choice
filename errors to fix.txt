@@ -1,0 +1,13 @@
+genotype, phenotype erroring some issue wit
+compare with what the old code 
+
+
+make sure to change one thing at a time 
+
+just run like 10 generations 
+
+
+(genotype - phenotype conversation)
+
+look at old code when it was clamping
+and just implement genotype phentotype conversion 

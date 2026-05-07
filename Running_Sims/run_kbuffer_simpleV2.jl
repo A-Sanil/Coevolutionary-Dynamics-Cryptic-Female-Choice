@@ -105,6 +105,8 @@ data = DataFrame(results, [
     :Rep
 ])
 
+sanitize_csv_dataframe!(data)
+
 runstamp = Dates.format(now(), "yyyy-mm-ddTHH-MM-SS")
 outdir = joinpath(output_root, "run_v2_" * runstamp)
 isdir(outdir) || mkpath(outdir)

@@ -6,9 +6,9 @@
 #SBATCH --mail-user=asanil@berkeley.edu                                              
 #SBATCH --nodes=1                                                                            
 #SBATCH -p savio2_bigmem
-#SBATCH --cpus-per-task=24                                                                         
+#SBATCH --cpus-per-task=16                                                                         
 #SBATCH --account=fc_fishes
 
                                                                   
 
-LD_LIBRARY_PATH="" /global/home/users/asanil/software/julia-1.9.2/bin/julia Simulation.jl
+LD_LIBRARY_PATH="" /global/scratch/users/asanil/.julia_scratch RunModel_KBufferV2.jl   

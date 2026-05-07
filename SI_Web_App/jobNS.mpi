@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH --output=Simulation_%J.out     
+#SBATCH --error=Simulation_%J.er                                                      
+#SBATCH --mail-type=ALL                                                                      
+#SBATCH --time=72:00:00
+#SBATCH --mail-user=asanil@berkeley.edu                                              
+#SBATCH --nodes=1                                                                            
+#SBATCH -p savio2_bigmem
+#SBATCH --cpus-per-task=24                                                                         
+#SBATCH --account=fc_fishes
+
+                                                                  
+
+LD_LIBRARY_PATH="" /global/home/users/asanil/software/julia-1.9.2/bin/julia Simulation.jl

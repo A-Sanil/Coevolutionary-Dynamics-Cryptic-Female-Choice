@@ -22,9 +22,9 @@ BLAS.set_num_threads(1)
 if !haskey(ENV, "N_WORKERS")
     slurm_cpus = tryparse(Int, get(ENV, "SLURM_CPUS_PER_TASK", ""))
     default_workers = if slurm_cpus != nothing && slurm_cpus > 1
-        max(1, slurm_cpus - 1)
+        max(1, 15)
     else
-        max(1, Sys.CPU_THREADS - 1)
+        max(1, 15)
     end
     ENV["N_WORKERS"] = string(default_workers)
 end

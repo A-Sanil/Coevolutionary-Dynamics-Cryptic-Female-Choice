@@ -6,10 +6,10 @@
 
 # ========== EDITABLE PARAMETERS ==========
 N = 500
-generations = parse(Int, get(ENV, "GENERATIONS", "10"))
-replicates = parse(Int, get(ENV, "REPLICATES", "10"))
+generations = 5
+replicates = 16
 
-K = parse(Int, get(ENV, "K_CAPACITY", "1000"))
+K = 1000
 maintain_sex_ratio = true
 show_gui = get(ENV, "SHOW_GUI", "0") == "1"
 

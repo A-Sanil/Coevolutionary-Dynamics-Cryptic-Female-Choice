@@ -13,6 +13,25 @@ K = parse(Int, get(ENV, "K_CAPACITY", "1000"))
 maintain_sex_ratio = true
 show_gui = get(ENV, "SHOW_GUI", "0") == "1"
 
+# HPC-friendly defaults: enforce single-threaded BLAS and pick worker count
+using LinearAlgebra
+BLAS.set_num_threads(1)
+
+# Number of Julia worker processes to use for distributed runs.
+# Prefer SLURM_CPUS_PER_TASK-1 when available, otherwise N_WORKERS env or Sys.CPU_THREADS-1
+if !haskey(ENV, "N_WORKERS")
+    slurm_cpus = tryparse(Int, get(ENV, "SLURM_CPUS_PER_TASK", ""))
+    default_workers = if slurm_cpus != nothing && slurm_cpus > 1
+        max(1, slurm_cpus - 1)
+    else
+        max(1, Sys.CPU_THREADS - 1)
+    end
+    ENV["N_WORKERS"] = string(default_workers)
+end
+
+# Output root override (environment variable BRC_OUTPUT_ROOT already supported inside included file)
+ENV["BRC_OUTPUT_ROOT"] = get(ENV, "BRC_OUTPUT_ROOT", get(ENV, "OUTPUT_ROOT", "CSV data"))
+
 mu = 5.0
 var = 1.0
 a = 1.0

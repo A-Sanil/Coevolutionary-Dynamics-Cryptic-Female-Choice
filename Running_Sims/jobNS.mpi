@@ -5,10 +5,10 @@
 #SBATCH --time=72:00:00
 #SBATCH --mail-user=asanil@berkeley.edu                                              
 #SBATCH --nodes=1                                                                            
-#SBATCH -p savio2_bigmem
+#SBATCH -p savio2
 #SBATCH --cpus-per-task=16                                                                         
 #SBATCH --account=fc_fishes
 
                                                                   
 
-LD_LIBRARY_PATH="" /global/scratch/users/asanil/.julia_scratch RunModel_KBufferV2.jl   
+LD_LIBRARY_PATH="" /global/scratch/users/asanil/.julia_scratch run_kbuffer_simpleV2.jl   
